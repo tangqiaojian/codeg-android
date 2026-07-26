@@ -174,9 +174,23 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          release_tags=""
+          for attempt in {1..13}; do
+            if release_tags=$(
+              gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+                --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name'
+            ) && grep -Fqx "$GITHUB_REF_NAME" <<< "$release_tags"; then
+              break
+            fi
+            release_tags=""
+            if [[ "$attempt" -eq 13 ]]; then
+              echo "Published release $GITHUB_REF_NAME did not become visible through the API." >&2
+              exit 1
+            fi
+            sleep 5
+          done
           latest_tag=$(
-            gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
-              --jq '.[] | select(.draft == false and .prerelease == false) | .tag_name' |
+            printf '%s\n' "$release_tags" |
               grep -E '^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$' |
               sort -V |
               tail -n 1
