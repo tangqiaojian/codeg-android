@@ -78,7 +78,17 @@ sealed interface ContentBlock {
     data class Thinking(val text: String) : ContentBlock
     data class Image(val image: ImageData) : ContentBlock
     data class ImageGeneration(val revisedPrompt: String?, val image: ImageData?) : ContentBlock
-    data class ToolUse(val id: String?, val name: String, val inputPreview: String?) : ContentBlock
+    /**
+     * [meta] is the ACP extensibility metadata the agent stamped on the call — an
+     * opaque pass-through (the convention is agent-defined). Read today by the
+     * context-compaction detector and Grok's plan-mode tool resolution.
+     */
+    data class ToolUse(
+        val id: String?,
+        val name: String,
+        val inputPreview: String?,
+        val meta: JsonObject? = null,
+    ) : ContentBlock
     data class ToolResult(val id: String?, val outputPreview: String?, val isError: Boolean) : ContentBlock
     data class Unknown(val type: String) : ContentBlock
 
@@ -108,6 +118,7 @@ sealed interface ContentBlock {
                     id = obj.stringOrNull("tool_use_id"),
                     name = obj.nonEmptyString("tool_name") ?: "tool",
                     inputPreview = obj.stringOrNull("input_preview"),
+                    meta = obj.objectOrNull("meta"),
                 )
                 "tool_result" -> ToolResult(
                     id = obj.stringOrNull("tool_use_id"),

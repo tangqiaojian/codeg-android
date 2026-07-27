@@ -11,6 +11,7 @@ import app.codeg.android.core.model.PlanEntry
 import app.codeg.android.core.model.TurnRole
 import app.codeg.android.core.model.TurnUsage
 import app.codeg.android.feature.sessiondetail.LiveSegment
+import app.codeg.android.feature.sessiondetail.rendering.ContextCompaction
 import app.codeg.android.feature.sessiondetail.LiveToolCallState
 import app.codeg.android.feature.sessiondetail.LiveTurnState
 import app.codeg.android.feature.sessiondetail.rendering.MessageRender
@@ -35,6 +36,9 @@ sealed interface NodeContent {
     data class Tool(val vm: ToolCallVM) : NodeContent
     data class ToolGroup(val items: List<ToolCallVM>, val streaming: Boolean) : NodeContent
     data class Image(val image: ImageData, val caption: String?) : NodeContent
+    /** A context-compaction boundary — rendered as a chrome-less divider, not a card.
+     *  Token counts are Grok-only (codex sends none). */
+    data class Compaction(val before: Int?, val after: Int?, val running: Boolean) : NodeContent
     data class Footer(val turn: MessageTurn, val questionId: String?) : NodeContent
     data class Plan(val entries: List<PlanEntry>) : NodeContent
     data object Thinking : NodeContent
@@ -66,6 +70,7 @@ data class TimelineNode(
             is NodeContent.Tool -> MarkerKind.Tool(c.vm.bucket, c.vm.state)
             is NodeContent.ToolGroup -> MarkerKind.ToolGroup(c.items.any { it.state == ToolCallState.ERROR }, c.streaming)
             is NodeContent.Image -> MarkerKind.Image
+            is NodeContent.Compaction -> MarkerKind.Compaction
             is NodeContent.Footer -> MarkerKind.Footer
             is NodeContent.Plan -> MarkerKind.Plan
             is NodeContent.Thinking -> MarkerKind.Thinking
@@ -93,6 +98,7 @@ data class TimelineNode(
             is NodeContent.Tool -> "tool"
             is NodeContent.ToolGroup -> "toolgroup"
             is NodeContent.Image -> "image"
+            is NodeContent.Compaction -> "compaction"
             is NodeContent.Footer -> "footer"
             is NodeContent.Plan -> "plan"
             is NodeContent.Thinking -> "thinking"
@@ -236,7 +242,15 @@ object TranscriptTimeline {
             when (seg) {
                 is LiveSegment.Text -> if (seg.text.isNotBlank()) parts.add(RenderPart.Text(seg.text))
                 is LiveSegment.Thinking -> if (seg.text.isNotBlank()) parts.add(RenderPart.Reasoning(seg.text))
-                is LiveSegment.Tool -> parts.add(RenderPart.Tool(seg.call.toVM()))
+                // Same boundary-marker treatment as the persisted path: codex emits the
+                // `Context compacting` → `Context compacted` pair on one id, so the
+                // divider flips from running to settled in place.
+                is LiveSegment.Tool -> if (ContextCompaction.matches(seg.call.meta)) {
+                    val (before, after) = ContextCompaction.tokens(seg.call.meta)
+                    parts.add(RenderPart.Compaction(before, after, !seg.call.isFinished))
+                } else {
+                    parts.add(RenderPart.Tool(seg.call.toVM()))
+                }
             }
         }
         return parts
@@ -259,6 +273,8 @@ object TranscriptTimeline {
                 listOf(TimelineNode(gid, NodeContent.ToolGroup(part.items, part.streaming), agent))
             }
             is RenderPart.Image -> listOf(TimelineNode(base, NodeContent.Image(part.image, part.caption), agent))
+            is RenderPart.Compaction ->
+                listOf(TimelineNode(base, NodeContent.Compaction(part.before, part.after, part.running), agent))
             is RenderPart.Unknown -> listOf(TimelineNode(base, NodeContent.Unsupported(part.type), agent))
         }
     }

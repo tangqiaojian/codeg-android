@@ -30,7 +30,8 @@ enum class AgentType(val wire: String) {
     CODE_BUDDY("code_buddy"),
     KIMI_CODE("kimi_code"),
     PI("pi"),
-    GROK("grok");
+    GROK("grok"),
+    CURSOR("cursor");
 
     val displayName: String
         get() = when (this) {
@@ -45,6 +46,7 @@ enum class AgentType(val wire: String) {
             KIMI_CODE -> "Kimi Code"
             PI -> "Pi"
             GROK -> "Grok"
+            CURSOR -> "Cursor"
         }
 
     /** Short label for dense badges. */
@@ -61,6 +63,7 @@ enum class AgentType(val wire: String) {
             KIMI_CODE -> "Kimi"
             PI -> "Pi"
             GROK -> "Grok"
+            CURSOR -> "Cursor"
         }
 
     companion object {

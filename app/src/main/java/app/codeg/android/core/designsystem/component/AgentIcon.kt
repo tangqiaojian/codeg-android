@@ -33,6 +33,10 @@ object AgentVisuals {
         AgentType.KIMI_CODE -> Color(0xFF2B63B8)
         AgentType.PI -> Color(0xFF50555E)
         AgentType.GROK -> Color(0xFF333333)
+        // Cursor's cube mark is monochrome (the web renders it at plain
+        // `text-foreground`); a cool slate keeps it legible while staying clear of
+        // Grok's neutral grey.
+        AgentType.CURSOR -> Color(0xFF2C3440)
     }
 
     /** Short, non-logo label used inside the badge. */
@@ -48,6 +52,7 @@ object AgentVisuals {
         AgentType.KIMI_CODE -> "KM"
         AgentType.PI -> "PI"
         AgentType.GROK -> "GR"
+        AgentType.CURSOR -> "CU"
     }
 }
 

@@ -510,6 +510,55 @@
     <string name="agents_grok_api_key_configured">已配置 XAI_API_KEY。</string>
     <string name="agents_grok_api_key_none">未设置 XAI_API_KEY。</string>
     <string name="agents_grok_api_key_caption">保存为该智能体的 XAI_API_KEY；也可在终端运行“grok login”以使用订阅登录（SuperGrok / X Premium+）。</string>
+    <!-- Session detail · plan approval (Grok exit_plan_mode) -->
+    <string name="plan_approval_title">智能体已给出计划——请审阅</string>
+    <string name="plan_approval_subtitle">批准即开始实施，或发送修改意见让它重写计划。</string>
+    <string name="plan_approval_empty">智能体未写入计划。可批准开始实施，或要求修改。</string>
+    <string name="plan_approval_request_changes">要求修改</string>
+    <string name="plan_approval_send_notes">发送</string>
+    <string name="plan_approval_notes_placeholder">需要修改什么？</string>
+    <string name="plan_approval_approve">批准并开始</string>
+    <string name="plan_approval_abandon">放弃计划</string>
+    <string name="plan_approval_notes_dropped">该轮对话已结束，修改意见未发送。</string>
+    <!-- Session detail · context compaction -->
+    <string name="compaction_running">正在压缩上下文…</string>
+    <string name="compaction_done">上下文已压缩</string>
+    <string name="compaction_done_tokens">上下文已压缩 · %1$s → %2$s tokens</string>
+    <!-- Detail · Cursor -->
+    <string name="agents_cursor_section">Cursor 配置</string>
+    <string name="agents_cursor_footer">两种方式都登录 Cursor 自己的后端 —— cursor-agent 不支持自定义端点，因此没有 API 地址可填。</string>
+    <string name="agents_cursor_auth_mode">认证方式</string>
+    <string name="agents_cursor_mode_subscription">官网订阅</string>
+    <string name="agents_cursor_mode_api_key">Cursor API 密钥</string>
+    <string name="agents_cursor_mode_subscription_hint">在终端用 Cursor 账号登录，此处不保存任何凭据。</string>
+    <string name="agents_cursor_mode_api_key_hint">Cursor Dashboard 的账号密钥，在无头/服务器环境下替代浏览器登录。不是第三方或 OpenAI 密钥。</string>
+    <string name="agents_cursor_account">账号</string>
+    <string name="agents_cursor_status_checking">检测中…</string>
+    <string name="agents_cursor_status_missing">cursor-agent 未安装</string>
+    <string name="agents_cursor_status_signed_out">未登录</string>
+    <string name="agents_cursor_status_signed_in">已登录</string>
+    <string name="agents_cursor_refresh">刷新</string>
+    <string name="agents_cursor_login_hint">在运行 codeg 的机器上执行以下命令，完成后点刷新：</string>
+    <string name="agents_cursor_api_key">Cursor API 密钥</string>
+    <string name="agents_cursor_api_key_hint">在 Cursor Dashboard 的 Integrations 中创建。</string>
+    <string name="agents_cursor_model">默认模型</string>
+    <string name="agents_cursor_model_default">账号默认</string>
+    <string name="agents_cursor_model_footer">会话启动时通过 --model 传给 cursor-agent；保持默认则由 Cursor 自行选择。</string>
+    <string name="agents_cursor_models_loading">正在加载模型…</string>
+    <string name="agents_cursor_permissions">权限与沙箱</string>
+    <string name="agents_cursor_permissions_footer">规则与沙箱以合并方式写入 ~/.cursor/cli-config.json，保留 Cursor CLI 写入的其他键。运行中的会话需重启后生效。</string>
+    <string name="agents_cursor_run_everything">全部放行（Run Everything）</string>
+    <string name="agents_cursor_run_everything_on">Cursor 执行命令时不再询问，但下方的拒绝规则仍然生效。</string>
+    <string name="agents_cursor_run_everything_off">Cursor 执行命令前会先询问。</string>
+    <string name="agents_cursor_sandbox">沙箱</string>
+    <string name="agents_cursor_option_default">默认（未设置）</string>
+    <string name="agents_cursor_sandbox_enabled">启用</string>
+    <string name="agents_cursor_sandbox_disabled">禁用</string>
+    <string name="agents_cursor_allow_rules">允许规则</string>
+    <string name="agents_cursor_deny_rules">拒绝规则</string>
+    <string name="agents_cursor_add_rule">添加规则</string>
+    <string name="agents_cursor_rules_syntax">规则语法：Shell(命令)、Read(路径/通配)、Write(路径/通配)、WebFetch(域名)、Mcp(服务器:工具) —— 拒绝规则始终优先。</string>
+    <string name="agents_cursor_api_key_required">请填写 Cursor API 密钥，或改用官网订阅。</string>
     <!-- Detail · model-provider picker -->
     <string name="agents_provider_none">该智能体未配置模型提供方。请在“设置 → 模型提供方”中添加。</string>
     <string name="agents_provider_endpoint">端点</string>

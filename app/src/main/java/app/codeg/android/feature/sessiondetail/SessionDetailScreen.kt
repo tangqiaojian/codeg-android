@@ -76,6 +76,7 @@ import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.feature.sessiondetail.interactive.AskQuestionCard
 import app.codeg.android.feature.sessiondetail.interactive.PermissionRequestCard
+import app.codeg.android.feature.sessiondetail.interactive.PlanApprovalCard
 import app.codeg.android.feature.sessiondetail.timeline.LocalTimelineScroll
 import app.codeg.android.feature.sessiondetail.timeline.NodeBody
 import app.codeg.android.feature.sessiondetail.timeline.NodeContent
@@ -235,6 +236,13 @@ fun SessionDetailScreen(
                         questions = q.questions,
                         onSubmit = viewModel::answerQuestion,
                         onSkip = viewModel::dismissQuestion,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                    )
+                }
+                ui.pendingPlanApproval?.let { p ->
+                    PlanApprovalCard(
+                        planMarkdown = p.planMarkdown,
+                        onAnswer = viewModel::answerPlanApproval,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
                 }

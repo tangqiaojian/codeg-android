@@ -10,6 +10,9 @@ import app.codeg.android.core.model.AgentToml
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ClaudeAuthMode
 import app.codeg.android.core.model.CodexAuthMode
+import app.codeg.android.core.model.CursorAuthStatus
+import app.codeg.android.core.model.CursorModelsResult
+import app.codeg.android.core.model.CursorStructuredConfig
 import app.codeg.android.core.model.EnvText
 import app.codeg.android.core.model.FieldEdit
 import app.codeg.android.core.model.GeminiAuthMode
@@ -165,11 +168,20 @@ class AgentsViewModel @Inject constructor(
         d.copy(draft = transform(d.draft).reapplied(d.agentType), saveError = null)
     }
 
+    /**
+     * Re-bake the current draft without changing a field. A panel whose UI shows a
+     * default the saved env doesn't carry yet (Cursor's Run Everything, ON for a fresh
+     * agent) calls this on open, so a save that touched nothing else still persists
+     * what's displayed. `reapplied` is idempotent — a no-op for an already-baked agent.
+     */
+    fun rebakeDraft() = editDraft { it }
+
     /** Edit the raw config text (Advanced editor) verbatim — no re-bake, so it overrides the fields above. */
     fun editRawConfig(text: String) = updateDetail { d ->
         val draft = when (d.agentType) {
             AgentType.CODEX -> d.draft.copy(codexConfigTomlText = text)
             AgentType.GROK -> d.draft.copy(grokConfigTomlText = text)
+            AgentType.CURSOR -> d.draft.copy(cursorCliConfigText = text)
             else -> d.draft.copy(configText = text)
         }
         d.copy(draft = draft, saveError = null)
@@ -260,10 +272,30 @@ class AgentsViewModel @Inject constructor(
                         } else {
                             makeConfigBody(state.agentType, payload, state.agent)
                         }
-                        c.acpUpdateAgentConfig(
-                            state.agentType, cfg.configJson, cfg.opencodeAuthJson, cfg.codexAuthJson,
-                            cfg.codexConfigToml, cfg.grokConfigToml,
-                        )
+                        try {
+                            c.acpUpdateAgentConfig(
+                                state.agentType, cfg.configJson, cfg.opencodeAuthJson, cfg.codexAuthJson,
+                                cfg.codexConfigToml, cfg.grokConfigToml,
+                                cfg.cursorCliConfigJson, cfg.cursorStructured,
+                            )
+                        } catch (e: Exception) {
+                            // The two writes are not one transaction. For an agent whose env
+                            // and native config are two halves of ONE permission decision, a
+                            // half-applied save is worse than a failed one: Cursor's "Run
+                            // Everything" rides the env while its deny rules live in
+                            // cli-config.json, so a rejected config write (e.g. hand-edited
+                            // invalid JSON under Advanced) would otherwise leave commands
+                            // auto-approved with the new rules never applied. Put the env back
+                            // exactly as it was, then report the original failure.
+                            if (state.agentType == AgentType.CURSOR) {
+                                runCatching {
+                                    c.acpUpdateAgentEnv(
+                                        state.agentType, liveEnabled, state.agent.env, state.agent.modelProviderId,
+                                    )
+                                }
+                            }
+                            throw e
+                        }
                     }
                     reload()
                 }
@@ -348,6 +380,26 @@ class AgentsViewModel @Inject constructor(
 
     // endregion
 
+    // region Cursor probes (reads — NOT serialized on [opMutex])
+
+    /**
+     * Probe `cursor-agent status` for the panel's account card. [apiKey] is the key
+     * currently on screen (empty ⇒ test the browser login), so the card reflects what
+     * the user is editing rather than what was last saved.
+     */
+    suspend fun cursorAuthStatus(apiKey: String): CursorAuthStatus {
+        val c = client ?: throw IllegalStateException("Not connected")
+        return c.acpCursorAuthStatus(apiKey)
+    }
+
+    /** Probe `cursor-agent models` for the panel's model picker. */
+    suspend fun cursorListModels(apiKey: String): CursorModelsResult {
+        val c = client ?: throw IllegalStateException("Not connected")
+        return c.acpCursorListModels(apiKey)
+    }
+
+    // endregion
+
     private fun updateDetail(block: (AgentDetailState) -> AgentDetailState) =
         _ui.update { it.copy(detail = it.detail?.let(block)) }
 
@@ -360,6 +412,8 @@ class AgentsViewModel @Inject constructor(
         val codexAuthJson: String?,
         val codexConfigToml: String?,
         val grokConfigToml: String? = null,
+        val cursorCliConfigJson: String? = null,
+        val cursorStructured: CursorStructuredConfig? = null,
     )
 
     /** Port of iOS `makeConfigBody` — per-agent native-file payload for `acp_update_agent_config`. */
@@ -382,7 +436,20 @@ class AgentsViewModel @Inject constructor(
                     codexConfigToml = null,
                 )
             }
-            // Grok is handled separately in save() via grokConfigPayload() (it needs a
+            // Cursor has no config.json. Normally only the structured patch goes and the
+            // backend merges it onto the FRESH on-disk cli-config.json, so a concurrent
+            // edit from the Cursor CLI's own `/config` UI survives. Once the user edited
+            // the raw file under Advanced, that text is sent instead and the patch is
+            // suppressed — see [cursorStructuredForSave].
+            AgentType.CURSOR -> ConfigPayload(
+                configJson = null,
+                opencodeAuthJson = null,
+                codexAuthJson = null,
+                codexConfigToml = null,
+                cursorCliConfigJson = cursorCliConfigForSave(draft, original),
+                cursorStructured = cursorStructuredForSave(draft, original),
+            )
+            // Grok is handled separately in save() via grokConfigTomlForSave() (it needs a
             // fresh re-read of the live config.toml as the patch base), so it never
             // reaches makeConfigBody. The else-branch below would mis-handle it.
             else -> {
@@ -445,6 +512,45 @@ internal fun grokConfigTomlForSave(draft: AgentDraft, snapshot: AcpAgentInfo, fr
     }
 }
 
+/**
+ * Agents whose Advanced editor holds a NATIVE config file (TOML / cli-config.json)
+ * rather than the shared `config.json`, so a `configText` JSON parse must not gate
+ * their save — those drafts keep `configText` untouched.
+ */
+private val nativeRawConfigAgents = setOf(AgentType.CODEX, AgentType.GROK, AgentType.CURSOR)
+
+/**
+ * The `cursor_cli_config_json` to persist (null ⇒ don't touch the raw file). Sent ONLY
+ * when the user edited it under Advanced — otherwise the backend merges
+ * [cursorStructuredForSave] onto the FRESH on-disk cli-config.json instead of a panel
+ * snapshot the Cursor CLI's own `/config` UI may have moved past. Extracted for testing.
+ */
+internal fun cursorCliConfigForSave(draft: AgentDraft, original: AcpAgentInfo): String? =
+    draft.cursorCliConfigText.takeIf { it != (original.cursorCliConfigJson ?: "") }
+
+/**
+ * Cursor's structured controls (null ⇒ send no patch). Unlike Grok's payload an absent
+ * field here means "leave that key alone" server-side, so this is a safe patch: `""`
+ * sandbox means "leave sandbox.mode alone", while the rule lists are replaced
+ * wholesale, so an emptied list is sent as `[]` — a real "no rules", not an omission.
+ * Blank rows (an "add rule" the user never filled in) are dropped.
+ *
+ * Suppressed entirely once the user edited the raw cli-config.json: the server applies
+ * the patch ON TOP of the raw text it was sent, so the form's values — seeded from the
+ * file BEFORE the edit — would overwrite hand-edited sandbox/rule keys. An Advanced
+ * edit wins verbatim, the same precedence [grokConfigTomlForSave] gives Grok's raw
+ * TOML. (The web avoids the conflict by having two separate save buttons; this panel,
+ * like iOS, has one.) Extracted for testing.
+ */
+internal fun cursorStructuredForSave(draft: AgentDraft, original: AcpAgentInfo): CursorStructuredConfig? {
+    if (cursorCliConfigForSave(draft, original) != null) return null
+    return CursorStructuredConfig(
+        sandboxMode = draft.cursorSandboxMode.ifEmpty { null },
+        permissionsAllow = draft.cursorAllowRules.map { it.trim() }.filter { it.isNotEmpty() },
+        permissionsDeny = draft.cursorDenyRules.map { it.trim() }.filter { it.isNotEmpty() },
+    )
+}
+
 data class AgentsUiState(
     val agents: List<AcpAgentInfo> = emptyList(),
     val loading: Boolean = false,
@@ -465,9 +571,12 @@ data class AgentDetailState(
     val missingProvider: Boolean get() = AgentConfig.missingModelProvider(agentType, draft)
     /** A self-hosted CodeBuddy whose Base URL isn't a valid http(s) URL blocks save. */
     val missingCodeBuddyBaseUrl: Boolean get() = AgentConfig.missingCodeBuddyBaseUrl(agentType, draft)
-    val canSave: Boolean get() = dirty && !saving && !missingProvider && !missingCodeBuddyBaseUrl
+    /** Cursor in API-key mode with no key blocks save (it would write a credential-less mode). */
+    val missingCursorApiKey: Boolean get() = AgentConfig.missingCursorApiKey(agentType, draft)
+    val canSave: Boolean
+        get() = dirty && !saving && !missingProvider && !missingCodeBuddyBaseUrl && !missingCursorApiKey
     val configError: String?
-        get() = if (agentType == AgentType.CODEX || agentType == AgentType.GROK) null
+        get() = if (agentType in nativeRawConfigAgents) null
         else JsonConfig.parse(draft.configText).error
     val provider: ModelProviderInfo? get() = providers.firstOrNull { it.id == draft.modelProviderId }
 }

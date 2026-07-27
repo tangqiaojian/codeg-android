@@ -60,6 +60,8 @@ sealed interface UserMessageBlock {
 sealed interface AcpEvent {
     data class ContentDelta(val text: String) : AcpEvent
     data class Thinking(val text: String) : AcpEvent
+    /** [meta] is the agent's opaque ACP extensibility metadata (context compaction,
+     *  Grok's `x.ai/tool` identity, …). Absent for most tools/hosts. */
     data class ToolCall(
         val id: String,
         val title: String,
@@ -68,7 +70,10 @@ sealed interface AcpEvent {
         val content: String?,
         val rawInput: String?,
         val rawOutput: String?,
+        val meta: JsonObject? = null,
     ) : AcpEvent
+    /** A null [meta] means "unchanged" (the server omits the key), NOT "cleared" —
+     *  see `LiveTurnBuilder`'s replace-on-update handling. */
     data class ToolCallUpdate(
         val id: String,
         val title: String?,
@@ -77,6 +82,7 @@ sealed interface AcpEvent {
         val rawInput: String?,
         val rawOutput: String?,
         val append: Boolean,
+        val meta: JsonObject? = null,
     ) : AcpEvent
     data class TurnComplete(val stopReason: String) : AcpEvent
     data class SessionStarted(val sessionId: String) : AcpEvent
@@ -99,6 +105,20 @@ sealed interface AcpEvent {
      * `acp_answer_question`. */
     data class QuestionRequest(val questionId: String, val questions: List<QuestionSpec>) : AcpEvent
     data class QuestionResolved(val questionId: String) : AcpEvent
+    /**
+     * Grok's native `exit_plan_mode`: the agent finished planning and is BLOCKED on the
+     * user's approval before it leaves plan mode and starts implementing. Resolve via
+     * `acp_answer_plan_approval`; also carried on the session snapshot so a mid-turn
+     * attach recovers it.
+     */
+    data class PlanApprovalRequest(
+        val approvalId: String,
+        val toolCallId: String,
+        val planMarkdown: String,
+    ) : AcpEvent
+    /** A pending plan approval was answered (from any client) or canceled — clear the
+     *  card. Idempotent on apply. */
+    data class PlanApprovalResolved(val approvalId: String) : AcpEvent
     /** The agent's live plan / TODO list (display only; does not block the turn). */
     data class PlanUpdate(val entries: List<PlanEntry>) : AcpEvent
     data class Unknown(val type: String) : AcpEvent
@@ -121,6 +141,7 @@ sealed interface AcpEvent {
                     content = obj.stringOrNull("content"),
                     rawInput = obj.stringOrNull("raw_input"),
                     rawOutput = obj.stringOrNull("raw_output"),
+                    meta = obj.objectOrNull("meta"),
                 )
                 "tool_call_update" -> ToolCallUpdate(
                     id = obj.stringOrNull("tool_call_id").orEmpty(),
@@ -130,6 +151,7 @@ sealed interface AcpEvent {
                     rawInput = obj.stringOrNull("raw_input"),
                     rawOutput = obj.stringOrNull("raw_output"),
                     append = obj.boolOrNull("raw_output_append") ?: false,
+                    meta = obj.objectOrNull("meta"),
                 )
                 "turn_complete" -> TurnComplete(obj.stringOrNull("stop_reason") ?: "end_turn")
                 "session_started" -> SessionStarted(obj.stringOrNull("session_id").orEmpty())
@@ -168,6 +190,14 @@ sealed interface AcpEvent {
                     questions = decodeList(json, obj["questions"], QuestionSpec.serializer()),
                 )
                 "question_resolved" -> QuestionResolved(obj.stringOrNull("question_id").orEmpty())
+                "plan_approval_request" -> PlanApprovalRequest(
+                    approvalId = obj.stringOrNull("approval_id").orEmpty(),
+                    toolCallId = obj.stringOrNull("tool_call_id").orEmpty(),
+                    // An empty/missing plan still opens the approval surface (Grok's
+                    // plan-mode doc allows it) — the card shows an empty-state notice.
+                    planMarkdown = obj.stringOrNull("plan_markdown").orEmpty(),
+                )
+                "plan_approval_resolved" -> PlanApprovalResolved(obj.stringOrNull("approval_id").orEmpty())
                 "plan_update" -> PlanUpdate(
                     entries = decodeList(json, obj["entries"], PlanEntry.serializer()),
                 )
@@ -227,6 +257,7 @@ data class LiveSessionSnapshot(
     val activeToolCalls: List<ToolCallStateSnapshot>,
     val pendingPermission: PendingPermissionSnapshot?,
     val pendingQuestion: PendingQuestionSnapshot?,
+    val pendingPlanApproval: PendingPlanApprovalSnapshot?,
 ) {
     companion object {
         fun fromWire(obj: JsonObject, json: Json): LiveSessionSnapshot =
@@ -246,6 +277,8 @@ data class LiveSessionSnapshot(
                     ?.let { PendingPermissionSnapshot.fromWire(it, json) },
                 pendingQuestion = obj.objectOrNull("pending_question")
                     ?.let { PendingQuestionSnapshot.fromWire(it, json) },
+                pendingPlanApproval = obj.objectOrNull("pending_plan_approval")
+                    ?.let(PendingPlanApprovalSnapshot::fromWire),
             )
 
         private fun JsonObject.intOrNull(key: String): Int? =
@@ -303,6 +336,8 @@ data class ToolCallStateSnapshot(
     val input: JsonElement?,
     val output: JsonElement?,
     val content: String?,
+    /** The agent's opaque ACP metadata, as on the live event path. */
+    val meta: JsonObject? = null,
 ) {
     /** The agent's argument JSON as a preview string (matches the event path's
      *  `raw_input`, which already arrives as a string). */
@@ -347,6 +382,7 @@ data class ToolCallStateSnapshot(
                 input = obj["input"],
                 output = obj["output"],
                 content = obj.stringOrNull("content"),
+                meta = obj.objectOrNull("meta"),
             )
     }
 }
@@ -367,6 +403,26 @@ data class PendingPermissionSnapshot(
                         json.decodeFromJsonElement(ListSerializer(PermissionOption.serializer()), it)
                     }.getOrDefault(emptyList())
                 } ?: emptyList(),
+            )
+    }
+}
+
+/**
+ * Pending Grok plan approval carried by a snapshot (Rust `PendingPlanApprovalState`),
+ * so a client attaching mid-turn recovers the blocked `exit_plan_mode` card instead of
+ * watching the turn spin.
+ */
+data class PendingPlanApprovalSnapshot(
+    val approvalId: String,
+    val toolCallId: String,
+    val planMarkdown: String,
+) {
+    companion object {
+        fun fromWire(obj: JsonObject): PendingPlanApprovalSnapshot =
+            PendingPlanApprovalSnapshot(
+                approvalId = obj.stringOrNull("approval_id").orEmpty(),
+                toolCallId = obj.stringOrNull("tool_call_id").orEmpty(),
+                planMarkdown = obj.stringOrNull("plan_markdown").orEmpty(),
             )
     }
 }

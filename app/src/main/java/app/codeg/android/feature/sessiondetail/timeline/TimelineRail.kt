@@ -81,6 +81,10 @@ sealed interface MarkerKind {
     data object Thinking : MarkerKind
     data object Error : MarkerKind
     data object Footer : MarkerKind
+    /** A context-compaction boundary. Like [Footer] it is a *marker on* the spine, not
+     *  an event hanging off it — the divider body carries the glyph and the label, so
+     *  the gutter just marks the point. */
+    data object Compaction : MarkerKind
 }
 
 /**
@@ -122,8 +126,11 @@ fun TimelineRow(
                 val centerX = TimelineMetrics.gutterWidth.toPx() / 2f
                 val markerCenterY = topPad.toPx() + TimelineMetrics.markerSize.toPx() / 2f
                 // Continuation rows draw one solid spine (gap 0) so blocks read as one
-                // reply; marker'd rows carve a clear disc around the glyph.
-                val gap = if (continuation) 0f else TimelineMetrics.markerSize.toPx() / 2f + TimelineMetrics.markerGap.toPx()
+                // reply; marker'd rows carve a clear disc around the glyph. A compaction
+                // is a marker ON the spine, not an event hanging off it, so the rail runs
+                // straight through it too.
+                val runsThrough = continuation || marker is MarkerKind.Compaction
+                val gap = if (runsThrough) 0f else TimelineMetrics.markerSize.toPx() / 2f + TimelineMetrics.markerGap.toPx()
                 val w = TimelineMetrics.lineWidth.toPx()
                 if (connectTop) {
                     drawLine(railColor, Offset(centerX, -1f), Offset(centerX, markerCenterY - gap), w)
@@ -179,6 +186,10 @@ fun NodeMarker(kind: MarkerKind, modifier: Modifier = Modifier) {
                 PulseRing(colors.accent, size)
             }
             is MarkerKind.Error -> FilledDisc(Icons.Rounded.PriorityHigh, colors.danger)
+            // The divider body already carries the archive glyph and the label; the
+            // gutter just marks the point on the spine.
+            is MarkerKind.Compaction ->
+                Box(Modifier.size(size * 0.34f).clip(CircleShape).background(colors.rail))
             is MarkerKind.Footer ->
                 Box(
                     Modifier.size(size * 0.34f).clip(CircleShape)

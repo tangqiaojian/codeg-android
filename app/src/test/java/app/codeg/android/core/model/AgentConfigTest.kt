@@ -22,6 +22,8 @@ class AgentConfigTest {
         opencodeAuthJson: String? = null,
         grokConfigToml: String? = null,
         grokSettings: GrokSettings? = null,
+        cursorCliConfigJson: String? = null,
+        cursorSettings: CursorSettings? = null,
     ) = AcpAgentInfo(
         agentType = type,
         env = env,
@@ -32,6 +34,8 @@ class AgentConfigTest {
         opencodeAuthJson = opencodeAuthJson,
         grokConfigToml = grokConfigToml,
         grokSettings = grokSettings,
+        cursorCliConfigJson = cursorCliConfigJson,
+        cursorSettings = cursorSettings,
     )
 
     // region JSON / env primitives
@@ -329,6 +333,112 @@ class AgentConfigTest {
         assertFalse(cleared.envText.contains("permission_mode"))
         assertFalse(cleared.configText.contains("permission_mode"))
     }
+
+    // region Cursor
+
+    @Test
+    fun `cursor seeds mode, model, force and rules from env plus the cli-config projection`() {
+        val d = AgentDraft.fromAgent(
+            agent(
+                AgentType.CURSOR,
+                env = mapOf(
+                    "CURSOR_AUTH_MODE" to "custom",
+                    "CURSOR_API_KEY" to "key_123",
+                    "CURSOR_MODEL" to "auto",
+                    "CURSOR_FORCE" to "0",
+                ),
+                cursorCliConfigJson = """{"version":1}""",
+                cursorSettings = CursorSettings(
+                    sandboxMode = "enabled",
+                    permissionsAllow = listOf("Shell(ls)"),
+                    permissionsDeny = listOf("Shell(rm)"),
+                ),
+            ),
+        )
+        assertEquals(CursorAuthMethod.CUSTOM, d.cursorAuthMode)
+        assertEquals("key_123", d.apiKey)
+        assertEquals("auto", d.cursorModel)
+        // An explicit "0" is the user choosing "ask before running" — respect it.
+        assertFalse(d.cursorForce)
+        assertEquals("enabled", d.cursorSandboxMode)
+        assertEquals(listOf("Shell(ls)"), d.cursorAllowRules)
+        assertEquals(listOf("Shell(rm)"), d.cursorDenyRules)
+        assertEquals("""{"version":1}""", d.cursorCliConfigText)
+    }
+
+    @Test
+    fun `cursor infers custom mode from a legacy row that only has a key`() {
+        val legacy = AgentDraft.fromAgent(agent(AgentType.CURSOR, env = mapOf("CURSOR_API_KEY" to "key_1")))
+        assertEquals(CursorAuthMethod.CUSTOM, legacy.cursorAuthMode)
+        // A fresh agent (no knob at all) defaults to subscription + Run Everything ON.
+        val fresh = AgentDraft.fromAgent(agent(AgentType.CURSOR))
+        assertEquals(CursorAuthMethod.SUBSCRIPTION, fresh.cursorAuthMode)
+        assertTrue(fresh.cursorForce)
+        assertEquals("", fresh.cursorSandboxMode)
+        assertEquals(emptyList<String>(), fresh.cursorAllowRules)
+    }
+
+    @Test
+    fun `cursor reapply writes the credential knobs and always scrubs the base url`() {
+        val custom = AgentDraft(
+            envText = "CURSOR_API_BASE_URL=https://legacy.example.com\n",
+            apiKey = "key_abc",
+            cursorAuthMode = CursorAuthMethod.CUSTOM,
+            cursorModel = "auto",
+            cursorForce = true,
+        ).reapplied(AgentType.CURSOR)
+        assertTrue(custom.envText.contains("CURSOR_AUTH_MODE=custom"))
+        assertTrue(custom.envText.contains("CURSOR_API_KEY=key_abc"))
+        assertTrue(custom.envText.contains("CURSOR_MODEL=auto"))
+        assertTrue(custom.envText.contains("CURSOR_FORCE=1"))
+        // cursor-agent has no BYO endpoint, so the legacy key is always removed.
+        assertFalse(custom.envText.contains("CURSOR_API_BASE_URL"))
+
+        // Subscription mode DELETES the key so the browser login is used.
+        val subscription = custom.copy(cursorAuthMode = CursorAuthMethod.SUBSCRIPTION)
+            .reapplied(AgentType.CURSOR)
+        assertTrue(subscription.envText.contains("CURSOR_AUTH_MODE=subscription"))
+        assertFalse(subscription.envText.contains("CURSOR_API_KEY"))
+    }
+
+    @Test
+    fun `cursor Run Everything OFF round-trips as an explicit 0`() {
+        // Deleting the key (what web/iOS do) would be indistinguishable from a fresh
+        // agent, which reads as ON — so the panel would come back claiming Run
+        // Everything is on and the next save would silently re-enable auto-approval.
+        val off = AgentDraft(cursorForce = false).reapplied(AgentType.CURSOR)
+        assertTrue(off.envText.contains("CURSOR_FORCE=0"))
+
+        val reloaded = AgentDraft.fromAgent(agent(AgentType.CURSOR, env = EnvText.parse(off.envText)))
+        assertFalse(reloaded.cursorForce)
+        // And it survives a second save untouched.
+        assertTrue(reloaded.reapplied(AgentType.CURSOR).envText.contains("CURSOR_FORCE=0"))
+        // ON still writes "1" (the only value the launch path adds `--force` for).
+        assertTrue(AgentDraft(cursorForce = true).reapplied(AgentType.CURSOR).envText.contains("CURSOR_FORCE=1"))
+    }
+
+    @Test
+    fun `cursor blocks save in api-key mode with no key`() {
+        val custom = AgentDraft(cursorAuthMode = CursorAuthMethod.CUSTOM)
+        assertTrue(AgentConfig.missingCursorApiKey(AgentType.CURSOR, custom))
+        assertFalse(AgentConfig.missingCursorApiKey(AgentType.CURSOR, custom.copy(apiKey = "key_1")))
+        // Subscription mode never blocks, and neither does another agent.
+        assertFalse(AgentConfig.missingCursorApiKey(AgentType.CURSOR, AgentDraft()))
+        assertFalse(AgentConfig.missingCursorApiKey(AgentType.GROK, custom))
+    }
+
+    @Test
+    fun `cursor login command quotes a path with spaces`() {
+        assertEquals("cursor-agent login", CursorConfig.loginCommand(null))
+        assertEquals("cursor-agent login", CursorConfig.loginCommand("  "))
+        assertEquals("/opt/bin/cursor-agent login", CursorConfig.loginCommand("/opt/bin/cursor-agent"))
+        assertEquals(
+            "\"/Users/a b/cursor-agent\" login",
+            CursorConfig.loginCommand("/Users/a b/cursor-agent"),
+        )
+    }
+
+    // endregion
 
     @Test
     fun `cline builds a fresh config json`() {

@@ -4,6 +4,7 @@ import app.codeg.android.core.designsystem.diff.DiffFile
 import app.codeg.android.core.model.ContentBlock
 import app.codeg.android.core.model.ImageData
 import app.codeg.android.core.model.MessageTurn
+import kotlinx.serialization.json.JsonObject
 
 /** The visual lifecycle of a tool call. */
 enum class ToolCallState { INPUT_STREAMING, RUNNING, DONE, ERROR }
@@ -26,10 +27,20 @@ data class ToolCallVM(
     val displayTitle: String,
     val bucket: ToolKindBucket,
     val diffFiles: List<DiffFile>?,
+    /** The agent's opaque ACP metadata for this call (Grok's `x.ai/tool` identity,
+     *  the context-compaction tag, …). Null for most tools and hosts. */
+    val meta: JsonObject? = null,
 ) {
     val trimmedOutput: String get() = (output ?: "").trim()
     val hasOutput: Boolean get() = trimmedOutput.isNotEmpty()
     val isCommand: Boolean get() = bucket == ToolKindBucket.EXECUTE
+
+    /**
+     * A plan-*mode* transition (Claude's `EnterPlanMode`/`ExitPlanMode`, Grok's
+     * `enter_plan_mode`/`exit_plan_mode`, Cline's `switch_mode`). A mode signal, not a
+     * work tool, so it renders standalone instead of folding into a group.
+     */
+    val isPlanMode: Boolean get() = ToolDerive.isPlanModeName(rawName)
 
     companion object {
         fun of(
@@ -41,21 +52,30 @@ data class ToolCallVM(
             output: String?,
             content: String?,
             isError: Boolean,
+            meta: JsonObject? = null,
         ): ToolCallVM {
+            // Grok's plan-mode tools carry their authoritative identity in
+            // `meta["x.ai/tool"].kind`, while the `title` we're handed as [rawName]
+            // MUTATES across the lifecycle (`enter_plan_mode` -> "Plan: Enter" -> "Plan
+            // mode entered"). Resolve them to the canonical name up front so the live
+            // stream lands on the same identity the persisted path reads — and so the
+            // card's title stops changing mid-stream.
+            val resolvedName = ToolDerive.grokPlanModeName(meta) ?: rawName
             val parsed = ToolDerive.parseJson(input)
-            val bucket = ToolDerive.bucket(rawName, kind)
+            val bucket = ToolDerive.bucket(resolvedName, kind)
             return ToolCallVM(
                 id = id,
-                rawName = rawName,
+                rawName = resolvedName,
                 kind = kind,
                 state = state,
                 input = input,
                 output = output,
                 content = content,
                 isError = isError,
-                displayTitle = ToolDerive.title(rawName, parsed),
+                displayTitle = ToolDerive.title(resolvedName, parsed),
                 bucket = bucket,
                 diffFiles = ToolDerive.diff(bucket, input, output, content, parsed),
+                meta = meta,
             )
         }
     }
@@ -68,6 +88,12 @@ sealed interface RenderPart {
     data class Tool(val vm: ToolCallVM) : RenderPart
     data class ToolGroup(val items: List<ToolCallVM>, val streaming: Boolean) : RenderPart
     data class Image(val image: ImageData, val caption: String?) : RenderPart
+    /**
+     * A context compaction (`meta.contextCompaction`) — a conversation boundary
+     * marker, not a tool call. Rendered as a chrome-less centred divider; the token
+     * counts are Grok-only (codex sends none).
+     */
+    data class Compaction(val before: Int?, val after: Int?, val running: Boolean) : RenderPart
     data class Unknown(val type: String) : RenderPart
 }
 
@@ -106,11 +132,22 @@ object MessageRender {
                         isErr -> ToolCallState.ERROR
                         else -> ToolCallState.DONE
                     }
+                    // A compaction is a boundary marker, not a call: it renders as a
+                    // divider between turns, so it never becomes a ToolCallVM (and so
+                    // can't be swept into a tool group).
+                    if (ContextCompaction.matches(block.meta)) {
+                        val (before, after) = ContextCompaction.tokens(block.meta)
+                        parts.add(RenderPart.Compaction(before, after, state == ToolCallState.RUNNING))
+                        return@forEachIndexed
+                    }
                     parts.add(
                         RenderPart.Tool(
                             // Qualify the synthetic fallback with the turn id: a bare positional
                             // "tool-$idx" would collide across replies once it becomes a node key.
-                            ToolCallVM.of(block.id ?: "${turn.id}-tool-$idx", block.name, "", state, block.inputPreview, output, null, isErr),
+                            ToolCallVM.of(
+                                block.id ?: "${turn.id}-tool-$idx", block.name, "", state,
+                                block.inputPreview, output, null, isErr, block.meta,
+                            ),
                         ),
                     )
                 }
@@ -147,7 +184,9 @@ object MessageRender {
         }
 
         for (part in parts) {
-            if (part is RenderPart.Tool && part.vm.bucket != ToolKindBucket.TASK) {
+            // Agent-dispatch (`TASK`) and plan-mode transitions each render on their
+            // own, so they never fold into a generic tool run.
+            if (part is RenderPart.Tool && part.vm.bucket != ToolKindBucket.TASK && !part.vm.isPlanMode) {
                 run.add(part.vm)
             } else {
                 flush()

@@ -7,6 +7,7 @@ import app.codeg.android.core.model.MessageTurn
 import app.codeg.android.core.model.PlanEntry
 import app.codeg.android.core.model.ToolCallStateSnapshot
 import app.codeg.android.core.model.TurnRole
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 
 /** Immutable, render-ready snapshot of one in-flight tool call. */
@@ -18,6 +19,9 @@ data class LiveToolCallState(
     val rawInput: String?,
     val rawOutput: String,
     val content: String?,
+    /** The agent's opaque ACP metadata for this call (context compaction, Grok's
+     *  `x.ai/tool` identity, …). Null for most tools and hosts. */
+    val meta: JsonObject? = null,
 ) {
     val isFinished: Boolean
         get() = status in setOf("completed", "failed", "error", "cancelled", "canceled")
@@ -73,6 +77,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
         var rawInput: String?,
         val rawOutput: StringBuilder,
         var content: String?,
+        var meta: JsonObject?,
     )
 
     private val segments = mutableListOf<Seg>()
@@ -104,6 +109,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
         rawInput: String?,
         rawOutput: String?,
         content: String?,
+        meta: JsonObject? = null,
     ) {
         val existing = toolIndex[id]
         if (existing != null) {
@@ -113,6 +119,10 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
             if (rawInput != null) existing.rawInput = rawInput
             if (rawOutput != null) { existing.rawOutput.setLength(0); existing.rawOutput.append(rawOutput) }
             if (content != null) existing.content = content
+            // Replace-on-update, matching the server: a payload carrying no `meta` at
+            // all preserves what the call was announced with (codex sends the
+            // compaction tag once, on the opening `tool_call`).
+            if (meta != null) existing.meta = meta
         } else {
             val call = ToolBuilder(
                 id = id,
@@ -122,6 +132,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
                 rawInput = rawInput,
                 rawOutput = StringBuilder(rawOutput ?: ""),
                 content = content,
+                meta = meta,
             )
             toolIndex[id] = call
             segments.add(Seg.Tool(call))
@@ -136,10 +147,11 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
         rawOutput: String?,
         content: String?,
         append: Boolean,
+        meta: JsonObject? = null,
     ) {
         val call = toolIndex[id]
         if (call == null) {
-            upsertToolCall(id, title ?: "", "", status ?: "", rawInput, rawOutput, content)
+            upsertToolCall(id, title ?: "", "", status ?: "", rawInput, rawOutput, content, meta)
             return
         }
         if (!title.isNullOrEmpty()) call.title = title
@@ -152,6 +164,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
         if (rawOutput != null) {
             if (append) call.rawOutput.append(rawOutput) else { call.rawOutput.setLength(0); call.rawOutput.append(rawOutput) }
         }
+        if (meta != null) call.meta = meta
     }
 
     fun updatePlan(entries: List<PlanEntry>) { livePlan = entries }
@@ -186,6 +199,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
             rawInput = call.inputPreview,
             rawOutput = call.outputText.ifEmpty { null },
             content = call.content,
+            meta = call.meta,
         )
     }
 
@@ -216,6 +230,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
                         rawInput = seg.call.rawInput,
                         rawOutput = seg.call.rawOutput.toString(),
                         content = seg.call.content,
+                        meta = seg.call.meta,
                     ),
                 )
             }
@@ -234,7 +249,7 @@ class LiveTurnBuilder(val id: String = "live-${java.util.UUID.randomUUID()}") {
                 is Seg.Text -> if (seg.text.toString().isNotBlank()) blocks.add(ContentBlock.Text(seg.text.toString()))
                 is Seg.Thinking -> if (seg.text.toString().isNotBlank()) blocks.add(ContentBlock.Thinking(seg.text.toString()))
                 is Seg.Tool -> {
-                    blocks.add(ContentBlock.ToolUse(seg.call.id, seg.call.title, seg.call.rawInput))
+                    blocks.add(ContentBlock.ToolUse(seg.call.id, seg.call.title, seg.call.rawInput, seg.call.meta))
                     val output = seg.call.rawOutput.toString().ifEmpty { seg.call.content }
                     blocks.add(ContentBlock.ToolResult(seg.call.id, output, LiveToolCallState(seg.call.id, "", "", seg.call.status, null, "", null).isError))
                 }

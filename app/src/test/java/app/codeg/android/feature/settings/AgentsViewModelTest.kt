@@ -4,6 +4,7 @@ import app.codeg.android.core.model.AcpAgentInfo
 import app.codeg.android.core.model.AgentDraft
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.GrokSettings
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -79,5 +80,53 @@ class AgentsViewModelTest {
         val snapshot = AcpAgentInfo(agentType = AgentType.GROK, grokConfigToml = "[ui]\npermission_mode = \"ask\"\n")
         val draft = AgentDraft(grokConfigTomlText = "[ui]\npermission_mode = \"always-approve\"\n# mine\n")
         assertEquals(draft.grokConfigTomlText, grokConfigTomlForSave(draft, snapshot, "[different]\n"))
+    }
+
+    @Test
+    fun `cursor sends the raw cli-config only when the user edited it`() {
+        val original = AcpAgentInfo(agentType = AgentType.CURSOR, cursorCliConfigJson = """{"version":1}""")
+        val untouched = AgentDraft(cursorCliConfigText = """{"version":1}""")
+        // Unedited: the backend merges the structured patch onto the FRESH on-disk file.
+        assertNull(cursorCliConfigForSave(untouched, original))
+        // Edited under Advanced: the text wins verbatim.
+        assertEquals("""{"version":2}""", cursorCliConfigForSave(untouched.copy(cursorCliConfigText = """{"version":2}"""), original))
+    }
+
+    @Test
+    fun `a raw cursor edit suppresses the structured patch so it can't overwrite it`() {
+        // The server applies the patch ON TOP of the raw text it was sent, so a form
+        // seeded before the edit would clobber hand-edited sandbox / rule keys.
+        val original = AcpAgentInfo(agentType = AgentType.CURSOR, cursorCliConfigJson = """{"version":1}""")
+        val edited = AgentDraft(
+            cursorCliConfigText = """{"version":1,"permissions":{"allow":["Shell(rg)"]}}""",
+            cursorSandboxMode = "enabled",
+            cursorAllowRules = listOf("Shell(ls)"),
+        )
+        assertNull(cursorStructuredForSave(edited, original))
+        // Untouched raw text ⇒ the patch is the only thing sent, merged onto the fresh file.
+        assertEquals(
+            "enabled",
+            cursorStructuredForSave(edited.copy(cursorCliConfigText = """{"version":1}"""), original)?.sandboxMode,
+        )
+    }
+
+    @Test
+    fun `cursor structured patch omits an unset sandbox and drops blank rules`() {
+        val original = AcpAgentInfo(agentType = AgentType.CURSOR)
+        val draft = AgentDraft(
+            cursorSandboxMode = "",
+            cursorAllowRules = listOf("Shell(ls)", "  ", ""),
+            cursorDenyRules = emptyList(),
+        )
+        val patch = cursorStructuredForSave(draft, original)!!
+        // "" sandbox means "leave sandbox.mode alone" — omitted, not sent as a value.
+        assertNull(patch.sandboxMode)
+        // An "add rule" row the user never filled in must not reach the file.
+        assertEquals(listOf("Shell(ls)"), patch.permissionsAllow)
+        // An emptied list is a real "no rules": sent as [], NOT omitted.
+        assertEquals(emptyList<String>(), patch.permissionsDeny)
+        assertFalse(patch.permissionsDeny == null)
+
+        assertEquals("enabled", cursorStructuredForSave(draft.copy(cursorSandboxMode = "enabled"), original)?.sandboxMode)
     }
 }

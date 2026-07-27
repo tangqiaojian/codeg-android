@@ -6,7 +6,10 @@ import app.codeg.android.core.model.ConversationDetail
 import app.codeg.android.core.model.ConversationIdBody
 import app.codeg.android.core.model.ConnectBody
 import app.codeg.android.core.model.ConnectionIdBody
+import app.codeg.android.core.model.AnswerPlanApprovalBody
 import app.codeg.android.core.model.AnswerQuestionBody
+import app.codeg.android.core.model.PlanApprovalAnswer
+import app.codeg.android.core.model.PlanApprovalDecision
 import app.codeg.android.core.model.CreateConversationBody
 import app.codeg.android.core.model.EmptyBody
 import app.codeg.android.core.model.FetchKimiModelsBody
@@ -71,6 +74,9 @@ import app.codeg.android.core.model.QuickMessageCreateBody
 import app.codeg.android.core.model.QuickMessageReorderBody
 import app.codeg.android.core.model.QuickMessageUpdateBody
 import app.codeg.android.core.model.AcpAgentInfo
+import app.codeg.android.core.model.CursorAuthStatus
+import app.codeg.android.core.model.CursorModelsResult
+import app.codeg.android.core.model.CursorStructuredConfig
 import app.codeg.android.core.model.AppUpdateCheckResult
 import app.codeg.android.core.model.GitDetectResult
 import app.codeg.android.core.model.GitHubAccount
@@ -260,6 +266,23 @@ class CodegClient(
     /** Answer an `ask_user_question`. Pass [QuestionAnswer.dismissed] to decline. */
     suspend fun answerQuestion(connectionId: String, questionId: String, answer: QuestionAnswer) {
         send("acp_answer_question", encode(AnswerQuestionBody(connectionId, questionId, answer)))
+    }
+
+    /**
+     * Resolve Grok's blocked `exit_plan_mode`. The backend broadcasts
+     * `plan_approval_resolved` so every client viewing the conversation clears its
+     * card, then unblocks the parked ext request.
+     */
+    suspend fun answerPlanApproval(
+        connectionId: String,
+        approvalId: String,
+        decision: PlanApprovalDecision,
+        feedback: String?,
+    ) {
+        send(
+            "acp_answer_plan_approval",
+            encode(AnswerPlanApprovalBody(connectionId, approvalId, PlanApprovalAnswer(decision, feedback))),
+        )
     }
 
     /** Pin or unpin a conversation (server `update_conversation_pinned`). */
@@ -524,7 +547,7 @@ class CodegClient(
     /**
      * Registered agents. Agent types this build doesn't recognise — a newer server
      * exposing more than the app knows (this build recognises every current server
-     * type through [AgentType.GROK], so this is a forward-compat safety net) — are
+     * type through [AgentType.CURSOR], so this is a forward-compat safety net) — are
      * DROPPED rather than left to collapse onto [AgentType.CLAUDE_CODE] during decode.
      * Otherwise each unknown agent would masquerade as Claude Code and the Agents
      * list, keyed by `agentType`, would hit duplicate keys and crash its LazyColumn.
@@ -557,6 +580,12 @@ class CodegClient(
      * explicit `null`. Sending `grokStructured` would omit the web-only custom-model /
      * `[session]` fields, and the server treats an omitted field as "delete", wiping
      * config the mobile panel never exposes; persisting our verbatim toml preserves it.
+     *
+     * Cursor's `cursorStructured` is safe to send, unlike Grok's: the server treats an
+     * absent field there as "leave that key alone" (a patch), not "delete", so the
+     * panel's two rule lists + sandbox mode merge onto the on-disk cli-config.json
+     * while the CLI's own keys survive. A null field is therefore OMITTED, not sent as
+     * an explicit null.
      */
     suspend fun acpUpdateAgentConfig(
         agentType: AgentType,
@@ -565,6 +594,8 @@ class CodegClient(
         codexAuthJson: String?,
         codexConfigToml: String?,
         grokConfigToml: String? = null,
+        cursorCliConfigJson: String? = null,
+        cursorStructured: CursorStructuredConfig? = null,
     ) {
         val body = buildJsonObject {
             put("agentType", agentType.wire)
@@ -574,9 +605,43 @@ class CodegClient(
             put("codexConfigToml", codexConfigToml)
             put("grokConfigToml", grokConfigToml)
             put("grokStructured", JsonNull)
+            put("cursorCliConfigJson", cursorCliConfigJson)
+            if (cursorStructured == null) {
+                put("cursorStructured", JsonNull)
+            } else {
+                putJsonObject("cursorStructured") {
+                    cursorStructured.sandboxMode?.let { put("sandboxMode", it) }
+                    cursorStructured.permissionsAllow?.let { rules ->
+                        putJsonArray("permissionsAllow") { rules.forEach { add(it) } }
+                    }
+                    cursorStructured.permissionsDeny?.let { rules ->
+                        putJsonArray("permissionsDeny") { rules.forEach { add(it) } }
+                    }
+                }
+            }
         }
         send("acp_update_agent_config", body.toString())
     }
+
+    /**
+     * Probe `cursor-agent status` for the Cursor panel's auth card. [apiKey] is the key
+     * currently typed into the form (empty ⇒ test the browser login). Never throws for
+     * an unauthenticated account — that's reported in the result — only for transport
+     * failures.
+     */
+    suspend fun acpCursorAuthStatus(apiKey: String): CursorAuthStatus = decode(
+        send("acp_cursor_auth_status", buildJsonObject { put("apiKey", apiKey) }.toString()),
+        CursorAuthStatus.serializer(),
+    )
+
+    /**
+     * Probe `cursor-agent models` for the Cursor panel's model picker. A probe that
+     * could not run comes back as an empty list plus `error`.
+     */
+    suspend fun acpCursorListModels(apiKey: String): CursorModelsResult = decode(
+        send("acp_cursor_list_models", buildJsonObject { put("apiKey", apiKey) }.toString()),
+        CursorModelsResult.serializer(),
+    )
 
     /**
      * Hermes' dedicated save path (`acp_update_hermes_config`). `apiKey`/`baseUrl`

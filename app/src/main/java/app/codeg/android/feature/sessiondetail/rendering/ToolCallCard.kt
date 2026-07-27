@@ -217,7 +217,10 @@ private fun TodoInputBody(input: String) {
  *  json / diff / markdown / log. */
 @Composable
 private fun ToolOutputSection(vm: ToolCallVM) {
-    val out = vm.trimmedOutput
+    // Codex wraps every MCP result in `{result: <CallToolResult>, error: null}` on its
+    // live wire; unwrap to the text the tool actually returned before classifying, or
+    // the card renders the envelope's raw JSON.
+    val out = ToolOutputFormat.mcpResultText(vm.trimmedOutput) ?: vm.trimmedOutput
     if (vm.bucket == ToolKindBucket.READ && !vm.isError) {
         val file = ReadOutputFormat.parse(out)
         if (file != null && file.content.isNotBlank()) {

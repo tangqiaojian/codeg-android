@@ -223,6 +223,12 @@ data class AcpAgentInfo(
     /** `grok` parsed scalar settings backing the structured controls — derived
      * server-side from [grokConfigToml] (`null` fields ⇒ the key is absent). */
     val grokSettings: GrokSettings? = null,
+    /** Raw `~/.cursor/cli-config.json` (Cursor only; the Advanced escape-hatch editor
+     * source, shared with the Cursor CLI's own `/config` UI). */
+    val cursorCliConfigJson: String? = null,
+    /** `cursor` parsed scalar settings backing the structured controls — derived
+     * server-side from [cursorCliConfigJson]. */
+    val cursorSettings: CursorSettings? = null,
 )
 
 /**
@@ -235,4 +241,62 @@ data class AcpAgentInfo(
 data class GrokSettings(
     val permissionMode: String? = null,
     val defaultReasoningEffort: String? = null,
+)
+
+/**
+ * The subset of `~/.cursor/cli-config.json` codeg manages, projected by the backend
+ * (`sandbox_mode` / `permissions_allow` / `permissions_deny` → these camelCase
+ * properties via [CodegJson]'s response SnakeCase strategy). Everything else in the
+ * file is preserved verbatim on write, so this is a view, not the whole document.
+ * The rule lists default to empty rather than failing when the key is absent.
+ */
+@Serializable
+data class CursorSettings(
+    val sandboxMode: String? = null,
+    val permissionsAllow: List<String> = emptyList(),
+    val permissionsDeny: List<String> = emptyList(),
+)
+
+/**
+ * `acp_cursor_auth_status` — the result of probing `cursor-agent status`. Parsed
+ * defensively server-side, so an unknown shape still yields something showable via
+ * [rawStatus] / [error].
+ */
+@Serializable
+data class CursorAuthStatus(
+    /** A launchable cursor-agent binary was found (cache or system install). */
+    val installed: Boolean = false,
+    val isAuthenticated: Boolean = false,
+    /** The CLI's own status string (e.g. `"unauthenticated"`). */
+    val rawStatus: String? = null,
+    /** Account email when signed in. */
+    val email: String? = null,
+    /** Membership/plan label when the CLI reports one (usually absent). */
+    val membership: String? = null,
+    /** Probe failure detail (spawn error / timeout / non-JSON output). */
+    val error: String? = null,
+    /** Absolute path of the binary codeg would launch — the source for
+     * [CursorConfig.loginCommand]. Null when nothing is installed. */
+    val binaryPath: String? = null,
+)
+
+/** One entry from `cursor-agent models`. [label] is the human name (empty when the
+ *  CLI emitted a bare id); [id] is what goes to `--model`. */
+@Serializable
+data class CursorModelInfo(
+    val id: String = "",
+    val label: String = "",
+    val isDefault: Boolean = false,
+) {
+    /** What the picker shows — the CLI's label, falling back to the raw id. */
+    val displayLabel: String get() = label.ifEmpty { id }
+}
+
+/** `acp_cursor_list_models` — best-effort parsed CLI output. [error] carries the reason
+ *  the probe couldn't run (e.g. not signed in) while [models] stays empty. */
+@Serializable
+data class CursorModelsResult(
+    val models: List<CursorModelInfo> = emptyList(),
+    val defaultModel: String? = null,
+    val error: String? = null,
 )

@@ -15,6 +15,7 @@ import app.codeg.android.core.model.AvailableCommandInfo
 import app.codeg.android.core.model.ConnectionStatus
 import app.codeg.android.core.model.ContentBlock
 import app.codeg.android.core.model.ExpertListItem
+import app.codeg.android.core.model.PlanApprovalDecision
 import app.codeg.android.core.model.ImageData
 import app.codeg.android.core.model.QuickMessage
 import android.content.ContentResolver
@@ -121,6 +122,10 @@ class SessionDetailViewModel @Inject constructor(
     /** The post-turn transcript reconcile. Tracked so a new send / cancel can cancel it,
      *  preventing an orphaned reconcile from a finished turn wiping a freshly-started one. */
     private var reconcileJob: Job? = null
+    /** Revision notes waiting to be sent as a follow-up prompt after a plan-approval
+     *  "request changes" (see [answerPlanApproval]), bound to the turn that produced
+     *  the approval so no other turn can ever deliver them. */
+    private var pendingPlanFollowUp: ParkedPlanNotes? = null
     /** In-flight options-connection resolve plus the agent/folder it targets. Shared across
      *  concurrent applies so a rapid mode+config change spawns ONE connection, but keyed by
      *  agent/folder so a draft's agent/folder switch doesn't reuse a now-stale-context connect.
@@ -223,9 +228,18 @@ class SessionDetailViewModel @Inject constructor(
 
     // region Send / cancel
 
-    fun send(text: String) {
+    fun send(text: String) = send(text, withAttachments = true)
+
+    /**
+     * Send the composer's draft — or, with [withAttachments] `false`, a prompt the app
+     * itself generated (today: the revision notes from a plan-approval "request
+     * changes", which Grok expects as a follow-up turn). A generated send never
+     * consumes the composer's pending attachments, so images the user was staging
+     * survive.
+     */
+    private fun send(text: String, withAttachments: Boolean) {
         val trimmed = text.trim()
-        val attachments = _ui.value.attachments
+        val attachments = if (withAttachments) _ui.value.attachments else emptyList()
         if ((trimmed.isEmpty() && attachments.isEmpty()) || _ui.value.isInFlight) return
 
         // Supersede any post-turn reconcile still running for the previous turn so it can't
@@ -263,7 +277,7 @@ class SessionDetailViewModel @Inject constructor(
                 sendStatus = "Connecting…",
                 notice = null,
                 restoreDraft = null,
-                attachments = emptyList(),
+                attachments = if (withAttachments) emptyList() else it.attachments,
                 isDraftEditable = false,
             )
         }
@@ -476,7 +490,7 @@ class SessionDetailViewModel @Inject constructor(
         closeStream()
         val conn = connectionId
         if (conn != null) viewModelScope.launch { runCatching { client?.cancel(conn) } }
-        _ui.update { it.copy(isInFlight = false, sendStatus = null, pendingPermission = null, pendingQuestion = null) }
+        clearInteractivePrompts()
     }
 
     // endregion
@@ -529,12 +543,12 @@ class SessionDetailViewModel @Inject constructor(
             is AcpEvent.ContentDelta -> { builder?.appendText(event.text); scheduleLiveEmit() }
             is AcpEvent.Thinking -> { builder?.appendThinking(event.text); scheduleLiveEmit() }
             is AcpEvent.ToolCall -> {
-                builder?.upsertToolCall(event.id, event.title, event.kind, event.status, event.rawInput, event.rawOutput, event.content)
+                builder?.upsertToolCall(event.id, event.title, event.kind, event.status, event.rawInput, event.rawOutput, event.content, event.meta)
                 _ui.update { if (it.isInFlight) it.copy(sendStatus = runningStatus()) else it }
                 scheduleLiveEmit()
             }
             is AcpEvent.ToolCallUpdate -> {
-                builder?.updateToolCall(event.id, event.title, event.status, event.rawInput, event.rawOutput, event.content, event.append)
+                builder?.updateToolCall(event.id, event.title, event.status, event.rawInput, event.rawOutput, event.content, event.append, event.meta)
                 // A tool finishing must revert the status line from "Running <tool>…" back to
                 // "Thinking…" (or to the next still-running tool); iOS recomputes on every update.
                 _ui.update { if (it.isInFlight) it.copy(sendStatus = runningStatus()) else it }
@@ -575,7 +589,40 @@ class SessionDetailViewModel @Inject constructor(
             is AcpEvent.QuestionResolved -> _ui.update {
                 if (it.pendingQuestion?.questionId == event.questionId) it.copy(pendingQuestion = null) else it
             }
+            // Grok finished planning and is blocked until the user decides. The card is
+            // pinned above the compose bar (like the permission/question ones), so no
+            // scroll nudge is needed — it can't be scrolled out of view.
+            is AcpEvent.PlanApprovalRequest -> _ui.update {
+                it.copy(pendingPlanApproval = PendingPlanApprovalUi(event.approvalId, event.toolCallId, event.planMarkdown))
+            }
+            is AcpEvent.PlanApprovalResolved -> _ui.update {
+                if (it.pendingPlanApproval?.approvalId == event.approvalId) it.copy(pendingPlanApproval = null) else it
+            }
             else -> Unit // session_started / user_message / etc. are informational
+        }
+    }
+
+    /**
+     * A blocked permission / question / plan-approval can't outlive its turn: clear any
+     * pending card when the turn finalizes, fails, or is cancelled, and return the
+     * composer to Send.
+     *
+     * Parked plan-revision notes are dropped here too — they are meaningful only as the
+     * immediate follow-up to the keep-planning turn that produced them. A turn that
+     * failed or was cancelled never gets that follow-up, and leaving them parked would
+     * let a LATER, unrelated turn's completion send them. [finalizeTurn] — the one path
+     * that legitimately delivers them — reads them before calling this.
+     */
+    private fun clearInteractivePrompts() {
+        pendingPlanFollowUp = null
+        _ui.update {
+            it.copy(
+                isInFlight = false,
+                sendStatus = null,
+                pendingPermission = null,
+                pendingQuestion = null,
+                pendingPlanApproval = null,
+            )
         }
     }
 
@@ -630,6 +677,49 @@ class SessionDetailViewModel @Inject constructor(
 
     fun dismissQuestion() = answerQuestion(app.codeg.android.core.model.QuestionAnswer.dismissed)
 
+    /**
+     * Resolve Grok's blocked `exit_plan_mode`. Optimistic clear on success; the card
+     * comes back (with a notice) if the post fails.
+     *
+     * "Request changes" needs one extra step: Grok DISCARDS the reply's `feedback` on
+     * the keep-planning path (only approve/abandon consume it), and its own TUI instead
+     * delivers the revision notes as a follow-up user turn. Mirror that — otherwise the
+     * notes vanish and Grok re-presents the same plan. The keep-planning turn is usually
+     * still winding down at this point, so the follow-up is parked and flushed when the
+     * turn completes.
+     */
+    fun answerPlanApproval(decision: PlanApprovalDecision, feedback: String?) {
+        val pending = _ui.value.pendingPlanApproval ?: return
+        val conn = connectionId ?: return
+        val notes = feedback?.trim().orEmpty()
+        // The turn that produced this approval. The post below is a suspension point, so
+        // that turn can finalize, fail, be cancelled, or be replaced by an unrelated new
+        // one before we get to act on the notes — the identity check below is what keeps
+        // the follow-up bound to the turn it belongs to.
+        val origin = liveBuilder
+        _ui.update { it.copy(pendingPlanApproval = null) }
+        viewModelScope.launch {
+            runCatching { client?.answerPlanApproval(conn, pending.approvalId, decision, notes.ifEmpty { null }) }
+                .onSuccess {
+                    if (decision != PlanApprovalDecision.REQUEST_CHANGES || notes.isEmpty()) return@onSuccess
+                    when (
+                        planFollowUpAction(
+                            sameTurn = liveBuilder === origin,
+                            inFlight = _ui.value.isInFlight,
+                            stopReason = origin?.stopReason,
+                            errorMessage = origin?.errorMessage,
+                        )
+                    ) {
+                        PlanFollowUp.PARK -> pendingPlanFollowUp = origin?.let { ParkedPlanNotes(it.id, notes) }
+                        PlanFollowUp.SEND_NOW -> send(notes, withAttachments = false)
+                        PlanFollowUp.DROP ->
+                            _ui.update { it.copy(notice = appContext.getString(R.string.plan_approval_notes_dropped)) }
+                    }
+                }
+                .onFailure { e -> _ui.update { it.copy(notice = e.displayMessage(), pendingPlanApproval = pending) } }
+        }
+    }
+
     /** Seed the live builder from a reattach snapshot, returning true when the session is
      *  actually in flight (a live message, active tools, a pending card, or actively
      *  prompting) and false when the connection is idle — the caller then aborts the
@@ -640,6 +730,7 @@ class SessionDetailViewModel @Inject constructor(
         val inFlight = !snap.liveMessage?.content.isNullOrEmpty() ||
             snap.activeToolCalls.isNotEmpty() ||
             snap.pendingPermission != null || snap.pendingQuestion != null ||
+            snap.pendingPlanApproval != null ||
             snap.status == app.codeg.android.core.model.ConnectionStatus.PROMPTING
         if (!inFlight) return false
         pendingReattachSeed = false
@@ -685,6 +776,17 @@ class SessionDetailViewModel @Inject constructor(
         snap.pendingQuestion?.let { q ->
             _ui.update { it.copy(pendingQuestion = PendingQuestionUi(q.questionId, q.questions)) }
         }
+        // Set OR clear: the attach snapshot is the connection's authoritative pending
+        // state, so an approval another client resolved while we were reconnecting must
+        // not leave a stale, still-actionable card behind (answering it would post a
+        // decision for an approval that no longer exists). The permission/question
+        // restores above deliberately keep their existing set-only behaviour.
+        _ui.update {
+            it.copy(
+                pendingPlanApproval = snap.pendingPlanApproval
+                    ?.let { p -> PendingPlanApprovalUi(p.approvalId, p.toolCallId, p.planMarkdown) },
+            )
+        }
     }
 
     private fun finalizeTurn(stopReason: String) {
@@ -696,9 +798,23 @@ class SessionDetailViewModel @Inject constructor(
         // The transcript keeps showing the finished live reply until `reconcileAfterTurn` swaps
         // in the server copy in the background. Mirrors iOS's computed `isInFlight`, which flips
         // the instant `live.isStreaming` goes false rather than waiting on the reconcile.
-        _ui.update { it.copy(isInFlight = false, sendStatus = null, pendingPermission = null, pendingQuestion = null) }
+        // Read before clearing: this is the one transition that delivers parked
+        // plan-revision notes (every other terminal path drops them). Notes parked by a
+        // DIFFERENT turn — one whose own completion never came, so a reconcile ended it
+        // instead — are dropped here rather than riding out on this unrelated turn.
+        val parked = pendingPlanFollowUp
+        val planFollowUp = parked?.notesFor(builder.id)
+        clearInteractivePrompts()
+        if (parked != null && planFollowUp == null) {
+            _ui.update { it.copy(notice = appContext.getString(R.string.plan_approval_notes_dropped)) }
+        }
         closeStream()
         reconcileAfterTurn()
+        // The keep-planning turn just ended — deliver the revision notes as the follow-up
+        // prompt Grok expects (it discards them on the reply itself). `send` supersedes
+        // the reconcile it just started and folds the finished reply in locally, exactly
+        // as a user typing the instant a turn ends would.
+        if (planFollowUp != null) send(planFollowUp, withAttachments = false)
     }
 
     private fun failLive(message: String) {
@@ -709,7 +825,7 @@ class SessionDetailViewModel @Inject constructor(
             emitLiveNow()
         }
         closeStream()
-        _ui.update { it.copy(isInFlight = false, sendStatus = null, pendingPermission = null, pendingQuestion = null) }
+        clearInteractivePrompts()
     }
 
     private fun handleStreamEnded(gen: Int, reason: String?) {
@@ -778,6 +894,12 @@ class SessionDetailViewModel @Inject constructor(
                     last?.role == TurnRole.ASSISTANT && last.blocks.isNotEmpty()
                 if (advanced) {
                     if (liveBuilder !== builder) return@launch
+                    // This turn ended without a `turn_complete` of its own (a dead
+                    // connection, an exhausted reconnect), so `finalizeTurn` never ran:
+                    // resolve its parked plan-revision notes here instead of leaving them
+                    // for whatever turn finalizes next.
+                    val orphanedNotes = builder?.let { pendingPlanFollowUp?.notesFor(it.id) }
+                    if (orphanedNotes != null) pendingPlanFollowUp = null
                     _ui.update {
                         it.copy(
                             turns = detail.turns,
@@ -790,6 +912,12 @@ class SessionDetailViewModel @Inject constructor(
                             sendStatus = null,
                             pendingPermission = null,
                             pendingQuestion = null,
+                            pendingPlanApproval = null,
+                            notice = if (orphanedNotes != null) {
+                                appContext.getString(R.string.plan_approval_notes_dropped)
+                            } else {
+                                it.notice
+                            },
                         )
                     }
                     liveBuilder = null
@@ -1425,8 +1553,54 @@ data class SessionDetailUiState(
     val error: String? = null,
     val pendingPermission: PendingPermissionUi? = null,
     val pendingQuestion: PendingQuestionUi? = null,
+    val pendingPlanApproval: PendingPlanApprovalUi? = null,
     val attachments: List<Attachment> = emptyList(),
 )
+
+/** What to do with a plan approval's revision notes — see [planFollowUpAction]. */
+internal enum class PlanFollowUp { PARK, SEND_NOW, DROP }
+
+/**
+ * Plan-revision notes parked for the turn that produced the approval, keyed by that
+ * turn's id.
+ *
+ * The key is what makes the parking safe: the originating turn may end through a path
+ * that never reaches `finalizeTurn` (a dead connection reconciled against the server
+ * transcript, an exhausted reconnect), and without the key the next unrelated turn's
+ * completion would pick the notes up and send them.
+ */
+internal data class ParkedPlanNotes(val turnId: String, val notes: String) {
+    /** The notes, but only for the turn that parked them; null for any other. */
+    fun notesFor(turnId: String): String? = notes.takeIf { this.turnId == turnId }
+}
+
+/**
+ * Where a "request changes" decision's revision notes should go, decided once the
+ * answer post comes back. That post is a suspension point, so by then the turn that
+ * produced the approval may have finalized, failed, been cancelled, or been replaced
+ * by an unrelated new one — and Grok reads these notes from a follow-up user turn, so
+ * sending them to the wrong turn starts work nobody asked for.
+ *
+ * - [PlanFollowUp.PARK] — the originating turn is still winding down; `finalizeTurn`
+ *   flushes the notes when it completes.
+ * - [PlanFollowUp.SEND_NOW] — it finished cleanly meanwhile (a stop reason, no error),
+ *   so the follow-up is due immediately.
+ * - [PlanFollowUp.DROP] — it was cancelled or failed, or a different turn is live now.
+ *
+ * Extracted for testing (the branch is otherwise only reachable through a real
+ * in-flight network round trip).
+ */
+internal fun planFollowUpAction(
+    sameTurn: Boolean,
+    inFlight: Boolean,
+    stopReason: String?,
+    errorMessage: String?,
+): PlanFollowUp = when {
+    !sameTurn -> PlanFollowUp.DROP
+    inFlight -> PlanFollowUp.PARK
+    stopReason != null && errorMessage == null -> PlanFollowUp.SEND_NOW
+    else -> PlanFollowUp.DROP
+}
 
 /** A `permission_request` awaiting the user's choice (parsed for the card). */
 data class PendingPermissionUi(
@@ -1439,4 +1613,20 @@ data class PendingPermissionUi(
 data class PendingQuestionUi(
     val questionId: String,
     val questions: List<app.codeg.android.core.model.QuestionSpec>,
+)
+
+/**
+ * A Grok `exit_plan_mode` awaiting the user's decision. Distinct from
+ * [PendingPermissionUi]: Grok's plan approval is its own blocking ext request with three
+ * outcomes, not a permission option list. (Claude's ExitPlanMode still arrives as a
+ * permission and keeps that path.)
+ */
+data class PendingPlanApprovalUi(
+    val approvalId: String,
+    /** Grok's `toolCallId` for the `exit_plan_mode` call. Not used for the answer (which
+     *  keys on [approvalId]) — kept so the card can correlate with the in-stream call. */
+    val toolCallId: String,
+    /** The plan, read from Grok's `plan.md`. May be empty — the card then shows an
+     *  empty-state notice rather than hiding, since the turn is blocked either way. */
+    val planMarkdown: String,
 )

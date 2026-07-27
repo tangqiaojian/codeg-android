@@ -1,7 +1,12 @@
 package app.codeg.android.feature.sessiondetail.rendering
 
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /** Locks down the ported tool title / bucket / diff derivation. */
@@ -52,5 +57,63 @@ class ToolDeriveTest {
         val diff = ToolDerive.diff(ToolKindBucket.EDIT, null, null, null, parsed)
         assertNotNull(diff)
         assertEquals("x.kt", diff!!.single().path)
+    }
+
+    private fun meta(raw: String): JsonObject = Json.parseToJsonElement(raw) as JsonObject
+
+    @Test
+    fun `grok plan-mode tools resolve from meta, not the mutating title`() {
+        val enter = meta("""{"x.ai/tool":{"kind":"enter_plan","name":"enter_plan_mode"}}""")
+        val exit = meta("""{"x.ai/tool":{"kind":"exit_plan","name":"exit_plan_mode"}}""")
+        assertEquals("enter_plan_mode", ToolDerive.grokPlanModeName(enter))
+        assertEquals("exit_plan_mode", ToolDerive.grokPlanModeName(exit))
+        // Every other Grok tool and every other host keeps its own name resolution.
+        assertNull(ToolDerive.grokPlanModeName(meta("""{"x.ai/tool":{"kind":"bash"}}""")))
+        assertNull(ToolDerive.grokPlanModeName(meta("""{"contextCompaction":true}""")))
+        assertNull(ToolDerive.grokPlanModeName(null))
+    }
+
+    @Test
+    fun `plan-mode names are an exact set, so update_plan keeps its checklist`() {
+        assertTrue(ToolDerive.isPlanModeName("exit_plan_mode"))
+        assertTrue(ToolDerive.isPlanModeName("ExitPlanMode"))
+        assertTrue(ToolDerive.isPlanModeName("enter_plan_mode"))
+        assertTrue(ToolDerive.isPlanModeName("switch_mode"))
+        assertTrue(ToolDerive.isPlanModeName("mcp__grok__exit_plan_mode"))
+        // Codex's real checklist tool must NOT be treated as a mode transition.
+        assertFalse(ToolDerive.isPlanModeName("update_plan"))
+        assertFalse(ToolDerive.isPlanModeName("plan"))
+        assertFalse(ToolDerive.isPlanModeName("TodoWrite"))
+    }
+
+    @Test
+    fun `a live plan-mode call gets a stable title regardless of the streamed one`() {
+        // Grok's title mutates across the lifecycle; the card must not follow it.
+        val vm = ToolCallVM.of(
+            id = "t1", rawName = "Plan mode entered", kind = "other", state = ToolCallState.DONE,
+            input = null, output = null, content = null, isError = false,
+            meta = meta("""{"x.ai/tool":{"kind":"enter_plan"}}"""),
+        )
+        assertEquals("enter_plan_mode", vm.rawName)
+        assertEquals("Entered plan mode", vm.displayTitle)
+        assertTrue(vm.isPlanMode)
+    }
+
+    @Test
+    fun `a plan-mode call never folds into a tool group`() {
+        fun tool(id: String, name: String, meta: JsonObject? = null) = RenderPart.Tool(
+            ToolCallVM.of(id, name, "", ToolCallState.DONE, null, null, null, false, meta),
+        )
+        val grouped = MessageRender.groupConsecutiveTools(
+            listOf(
+                tool("a", "Read"),
+                tool("b", "Plan: Enter", meta("""{"x.ai/tool":{"kind":"exit_plan"}}""")),
+                tool("c", "Grep"),
+            ),
+        )
+        // Read | plan-mode | Grep — three standalone parts, no ToolGroup.
+        assertEquals(3, grouped.size)
+        assertTrue(grouped.all { it is RenderPart.Tool })
+        assertTrue((grouped[1] as RenderPart.Tool).vm.isPlanMode)
     }
 }

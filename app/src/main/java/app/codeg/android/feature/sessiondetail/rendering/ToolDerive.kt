@@ -70,6 +70,17 @@ object ToolDerive {
             return null
         }
 
+        // Plan-mode transitions get a fixed human title. Grok's own titles mutate as
+        // the call progresses, so deriving from the (already canonicalized) name keeps
+        // the card stable across the lifecycle.
+        if (isPlanModeName(name)) {
+            return when (n.replace("_", "")) {
+                "enterplanmode" -> "Entered plan mode"
+                "exitplanmode" -> "Plan ready"
+                else -> "Switched mode"
+            }
+        }
+
         return when (n) {
             "read", "read_file", "readfile", "cat", "view" ->
                 str(listOf("file_path", "path", "filename", "file", "target_file"))?.let { "Read ${PathFormat.short(it)}" }
@@ -153,6 +164,34 @@ object ToolDerive {
         }
         return null
     }
+
+    /**
+     * Grok stamps the authoritative tool identity in `_meta["x.ai/tool"]`
+     * (`{name, kind, namespace, label}`). For its plan-mode tools this returns the
+     * canonical `enter_plan_mode` / `exit_plan_mode`; null for every other Grok tool
+     * and every non-Grok host, so their existing name resolution is preserved.
+     *
+     * Keyed on the stable `kind` discriminator, which — unlike `title`, the only name
+     * the live path is handed — does NOT mutate across the tool-call lifecycle
+     * (`enter_plan_mode` → "Plan: Enter" → "Plan mode entered").
+     */
+    fun grokPlanModeName(meta: JsonObject?): String? =
+        when ((meta?.get("x.ai/tool") as? JsonObject)?.string("kind")) {
+            "enter_plan" -> "enter_plan_mode"
+            "exit_plan" -> "exit_plan_mode"
+            else -> null
+        }
+
+    /**
+     * Plan-*mode* transition tools (Claude's `EnterPlanMode`/`ExitPlanMode`, Grok's
+     * `enter_plan_mode`/`exit_plan_mode`, Cline's `switch_mode`). Mirrors the web
+     * `isPlanModeToolName`: deliberately NOT the looser "contains plan" test, so
+     * Codex's `update_plan` (a real checklist) keeps its own rendering.
+     */
+    fun isPlanModeName(name: String): Boolean =
+        canonical(name).replace("_", "") in planModeNames
+
+    private val planModeNames = setOf("enterplanmode", "exitplanmode", "switchmode")
 
     private fun canonical(name: String): String {
         var n = name.lowercase()

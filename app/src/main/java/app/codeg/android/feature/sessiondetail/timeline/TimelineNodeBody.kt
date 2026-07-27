@@ -19,10 +19,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Archive
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.WarningAmber
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -88,6 +90,7 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
         is NodeContent.Tool -> ToolCallCard(c.vm, modifier)
         is NodeContent.ToolGroup -> ToolGroupCard(c.items, modifier, streaming = c.streaming)
         is NodeContent.Image -> InlineImage(c.image, c.caption, modifier)
+        is NodeContent.Compaction -> ContextCompactionDivider(c.before, c.after, c.running, modifier)
         is NodeContent.Footer -> TurnFooter(c.turn, c.questionId, modifier)
         is NodeContent.Plan -> LivePlanView(c.entries, modifier)
         is NodeContent.Thinking -> ThinkingShimmer(modifier)
@@ -258,6 +261,42 @@ private fun BlinkingCaret() {
     )
     Text("▌", fontFamily = FontFamily.Monospace, fontSize = 14.sp, color = CodegTheme.colors.accent, modifier = Modifier.alpha(a))
 }
+
+/**
+ * The context-compaction boundary: a hairline running the content width with a small
+ * archive glyph + label centred on it. Deliberately chrome-less (no card, no border) —
+ * it marks "the conversation's context was compacted here", it is not something the
+ * agent *did*.
+ *
+ * Grok stamps the before/after token counts on its compaction; codex sends none, and a
+ * no-op delta (before == after) would read as a bug, so both fall back to the plain
+ * label.
+ */
+@Composable
+fun ContextCompactionDivider(before: Int?, after: Int?, running: Boolean, modifier: Modifier = Modifier) {
+    val colors = CodegTheme.colors
+    val label = when {
+        running -> stringResource(R.string.compaction_running)
+        before != null && after != null && before != after ->
+            stringResource(R.string.compaction_done_tokens, groupDigits(before), groupDigits(after))
+        else -> stringResource(R.string.compaction_done)
+    }
+    Row(
+        modifier.fillMaxWidth().padding(vertical = 2.dp).alpha(if (running) 0.65f else 1f),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        HorizontalDivider(Modifier.weight(1f), color = colors.hairline)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            Icon(Icons.Rounded.Archive, contentDescription = null, tint = colors.textTertiary, modifier = Modifier.size(13.dp))
+            Text(label, fontSize = 11.sp, color = colors.textTertiary)
+        }
+        HorizontalDivider(Modifier.weight(1f), color = colors.hairline)
+    }
+}
+
+/** Thousands separators for the token counts, in the user's locale. */
+private fun groupDigits(value: Int): String = String.format(java.util.Locale.getDefault(), "%,d", value)
 
 /** A danger banner for a turn-tail error / cancellation. Port of iOS `InlineTurnError`. */
 @Composable

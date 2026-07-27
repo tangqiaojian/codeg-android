@@ -22,14 +22,18 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandMore
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Warning
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -60,6 +64,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.component.AgentAvatar
 import app.codeg.android.core.designsystem.component.CodegTextField
+import app.codeg.android.core.designsystem.component.CopyButton
 import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.component.PrimaryButton
 import app.codeg.android.core.designsystem.component.SecretField
@@ -72,6 +77,10 @@ import app.codeg.android.core.model.CodeBuddyEnvironment
 import app.codeg.android.core.model.ClaudeEffortLevel
 import app.codeg.android.core.model.CodexAuthMode
 import app.codeg.android.core.model.CodexReasoningEffort
+import app.codeg.android.core.model.CursorAuthMethod
+import app.codeg.android.core.model.CursorAuthStatus
+import app.codeg.android.core.model.CursorConfig
+import app.codeg.android.core.model.CursorModelInfo
 import app.codeg.android.core.model.GeminiAuthMode
 import app.codeg.android.core.model.HermesProviderKind
 import app.codeg.android.core.model.ModelProviderInfo
@@ -124,6 +133,7 @@ fun AgentDetailContent(
                 AgentType.HERMES -> HermesSection(detail, viewModel)
                 AgentType.CODE_BUDDY -> CodeBuddySection(detail, viewModel)
                 AgentType.GROK -> GrokSection(detail, viewModel)
+                AgentType.CURSOR -> CursorSection(detail, viewModel)
                 AgentType.KIMI_CODE -> AgentConfigKimiView(detail.agent, viewModel)
                 AgentType.PI -> AgentConfigPiView(detail.agent, viewModel)
             }
@@ -132,10 +142,15 @@ fun AgentDetailContent(
         }
 
         if (!selfContained) {
+            // Surface WHY Save is disabled for the one gate a user can't otherwise
+            // guess: API-key mode with nothing typed would persist a credential-less
+            // auth mode and silently fall back to the browser login.
+            val gateError = stringResource(R.string.agents_cursor_api_key_required)
+                .takeIf { detail.missingCursorApiKey }
             SaveBar(
                 canSave = detail.canSave,
                 saving = detail.saving,
-                error = detail.saveError,
+                error = detail.saveError ?: gateError,
                 onSave = { viewModel.save(onClose) },
             )
         }
@@ -524,6 +539,269 @@ private fun GrokSection(state: AgentDetailState, vm: AgentsViewModel) {
     }
 }
 
+/**
+ * Cursor is a hybrid like Grok, but with two write surfaces instead of one: the auth
+ * method, credential, model and Run Everything knob ride the env, while the sandbox
+ * mode + permission rules are a structured PATCH the backend merges onto
+ * `~/.cursor/cli-config.json` (so keys the Cursor CLI's own `/config` UI wrote
+ * survive), with the raw file as the Advanced escape hatch. Binds the shared draft;
+ * the host "Save" writes env then config in one shot.
+ *
+ * The two probes (`cursor-agent status` / `models`) are local read-only state: they
+ * test the credential CURRENTLY ON SCREEN, not the saved one, and re-run when the
+ * method changes because an API key and a browser login can list different catalogs.
+ * Port of iOS `CursorConfigSection` / web `CursorConfigPanel`.
+ */
+@Composable
+private fun CursorSection(state: AgentDetailState, vm: AgentsViewModel) {
+    val colors = CodegTheme.colors
+    val d = state.draft
+    val custom = d.cursorAuthMode == CursorAuthMethod.CUSTOM
+
+    var auth by remember { mutableStateOf<CursorAuthStatus?>(null) }
+    var authLoading by remember { mutableStateOf(false) }
+    var models by remember { mutableStateOf<List<CursorModelInfo>>(emptyList()) }
+    var modelsError by remember { mutableStateOf<String?>(null) }
+    var modelsLoading by remember { mutableStateOf(false) }
+    // The credential the probes should test: the typed key in API-key mode, or empty
+    // in subscription mode (which forces the browser-login credential).
+    val probeKey = if (custom) d.apiKey.trim() else ""
+    var refreshTick by remember { mutableStateOf(0) }
+
+    // Bake the on-screen state into `envText` up front: the panel shows Run Everything
+    // ON for a fresh agent, so without this a save that touched nothing else would
+    // persist an env that doesn't match what's displayed.
+    androidx.compose.runtime.LaunchedEffect(Unit) { vm.rebakeDraft() }
+
+    androidx.compose.runtime.LaunchedEffect(d.cursorAuthMode, refreshTick) {
+        // Drop the stale catalog first — it belongs to the previous method.
+        models = emptyList()
+        modelsError = null
+        authLoading = true
+        // A transport failure leaves the card in its previous state; a failed *probe*
+        // reports itself through `auth.error`.
+        val status = runCatching { vm.cursorAuthStatus(probeKey) }.getOrNull()
+        if (status != null) auth = status
+        authLoading = false
+        if (status?.isAuthenticated == true) {
+            modelsLoading = true
+            runCatching { vm.cursorListModels(probeKey) }
+                .onSuccess { models = it.models; modelsError = it.error }
+                .onFailure { modelsError = it.message }
+            modelsLoading = false
+        }
+    }
+
+    FormSection(
+        stringResource(R.string.agents_cursor_section),
+        footer = stringResource(R.string.agents_cursor_footer),
+    ) {
+        SelectField(
+            label = stringResource(R.string.agents_cursor_auth_mode),
+            value = d.cursorAuthMode,
+            options = listOf(
+                CursorAuthMethod.SUBSCRIPTION to stringResource(R.string.agents_cursor_mode_subscription),
+                CursorAuthMethod.CUSTOM to stringResource(R.string.agents_cursor_mode_api_key),
+            ),
+            onSelect = { m -> vm.editDraft { it.copy(cursorAuthMode = m) } },
+        )
+        Caption(
+            stringResource(
+                if (custom) R.string.agents_cursor_mode_api_key_hint else R.string.agents_cursor_mode_subscription_hint,
+            ),
+        )
+    }
+
+    FormSection(stringResource(R.string.agents_cursor_account)) {
+        CursorStatusRow(auth, authLoading) { refreshTick++ }
+        // The managed binary lives in codeg's cache and is NOT on PATH, so hand over
+        // the fully-resolved command rather than a bare `cursor-agent`.
+        if (!custom && auth?.installed == true && auth?.isAuthenticated == false) {
+            Caption(stringResource(R.string.agents_cursor_login_hint))
+            val command = CursorConfig.loginCommand(auth?.binaryPath)
+            Row(
+                Modifier.fillMaxWidth().clip(RoundedCornerShape(8.dp)).background(colors.codeSurface)
+                    .padding(start = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    command,
+                    fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = colors.textPrimary,
+                    modifier = Modifier.weight(1f),
+                )
+                CopyButton(command)
+            }
+        }
+        if (custom) {
+            SecretField(
+                d.apiKey,
+                { v -> vm.editDraft { it.copy(apiKey = v) } },
+                stringResource(R.string.agents_cursor_api_key),
+            )
+            Caption(stringResource(R.string.agents_cursor_api_key_hint))
+        }
+        auth?.error?.takeIf { it.isNotEmpty() }?.let {
+            Text(it, fontSize = 11.sp, color = colors.danger, modifier = Modifier.padding(start = 4.dp))
+        }
+    }
+
+    // The saved model stays selectable even when the catalog didn't load (or doesn't
+    // list it), so a hand-set value isn't silently dropped on the next save.
+    val savedModel = d.cursorModel.trim()
+    if (models.isNotEmpty() || savedModel.isNotEmpty()) {
+        FormSection(stringResource(R.string.agents_cursor_model), footer = stringResource(R.string.agents_cursor_model_footer)) {
+            val options = buildList {
+                add("" to stringResource(R.string.agents_cursor_model_default))
+                if (savedModel.isNotEmpty() && models.none { it.id == savedModel }) add(savedModel to savedModel)
+                models.forEach { add(it.id to it.displayLabel) }
+            }
+            SelectField(
+                label = stringResource(R.string.agents_cursor_model),
+                value = d.cursorModel,
+                options = options,
+                onSelect = { v -> vm.editDraft { it.copy(cursorModel = v) } },
+            )
+            if (modelsLoading) Caption(stringResource(R.string.agents_cursor_models_loading))
+            modelsError?.takeIf { it.isNotEmpty() }?.let {
+                Text(it, fontSize = 11.sp, color = colors.danger, modifier = Modifier.padding(start = 4.dp))
+            }
+        }
+    }
+
+    FormSection(stringResource(R.string.agents_cursor_permissions), footer = stringResource(R.string.agents_cursor_permissions_footer)) {
+        ToggleRow(stringResource(R.string.agents_cursor_run_everything), d.cursorForce) { v ->
+            vm.editDraft { it.copy(cursorForce = v) }
+        }
+        Caption(
+            stringResource(
+                if (d.cursorForce) R.string.agents_cursor_run_everything_on else R.string.agents_cursor_run_everything_off,
+            ),
+        )
+        SelectField(
+            label = stringResource(R.string.agents_cursor_sandbox),
+            value = d.cursorSandboxMode,
+            options = listOf(
+                "" to stringResource(R.string.agents_cursor_option_default),
+                "enabled" to stringResource(R.string.agents_cursor_sandbox_enabled),
+                "disabled" to stringResource(R.string.agents_cursor_sandbox_disabled),
+            ),
+            onSelect = { v -> vm.editDraft { it.copy(cursorSandboxMode = v) } },
+        )
+        RuleEditor(
+            label = stringResource(R.string.agents_cursor_allow_rules),
+            rules = d.cursorAllowRules,
+            placeholder = "Shell(ls)",
+            tone = colors.textPrimary,
+            onChange = { rules -> vm.editDraft { it.copy(cursorAllowRules = rules) } },
+        )
+        RuleEditor(
+            label = stringResource(R.string.agents_cursor_deny_rules),
+            rules = d.cursorDenyRules,
+            placeholder = "Shell(rm)",
+            tone = colors.danger,
+            onChange = { rules -> vm.editDraft { it.copy(cursorDenyRules = rules) } },
+        )
+        Caption(stringResource(R.string.agents_cursor_rules_syntax))
+    }
+}
+
+/** Cursor's account line: a status dot + label, a plan chip, and a refresh action.
+ *  Same status vocabulary the preflight rows use — accent = pass, amber = actionable,
+ *  muted = unknown/absent. */
+@Composable
+private fun CursorStatusRow(auth: CursorAuthStatus?, loading: Boolean, onRefresh: () -> Unit) {
+    val colors = CodegTheme.colors
+    val installed = auth?.installed == true
+    val signedIn = auth?.isAuthenticated == true
+    val tint = when {
+        signedIn -> colors.accent
+        installed -> CursorActionableAmber
+        else -> colors.textTertiary.copy(alpha = 0.5f)
+    }
+    val text = when {
+        loading && auth == null -> stringResource(R.string.agents_cursor_status_checking)
+        !installed -> stringResource(R.string.agents_cursor_status_missing)
+        !signedIn -> stringResource(R.string.agents_cursor_status_signed_out)
+        else -> auth?.email?.takeIf { it.isNotEmpty() } ?: stringResource(R.string.agents_cursor_status_signed_in)
+    }
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        Box(Modifier.size(8.dp).clip(RoundedCornerShape(4.dp)).background(tint))
+        Text(
+            text,
+            fontSize = 14.sp, color = colors.textPrimary, maxLines = 1,
+            overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+        )
+        auth?.membership?.takeIf { it.isNotEmpty() }?.let {
+            Text(
+                it,
+                fontSize = 11.sp, fontWeight = FontWeight.Medium, color = colors.accent,
+                modifier = Modifier.clip(RoundedCornerShape(50))
+                    .background(colors.accent.copy(alpha = 0.12f))
+                    .padding(horizontal = 6.dp, vertical = 2.dp),
+            )
+        }
+        IconButton(onClick = onRefresh, enabled = !loading, modifier = Modifier.size(32.dp)) {
+            if (loading) {
+                CircularProgressIndicator(color = colors.accent, strokeWidth = 2.dp, modifier = Modifier.size(16.dp))
+            } else {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = stringResource(R.string.agents_cursor_refresh),
+                    tint = colors.accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+        }
+    }
+}
+
+/** An editable list of permission rules: one text field per rule + delete, and an add
+ *  row. Indices are stable for the lifetime of an edit (rows are only appended or
+ *  removed) and rules are freely duplicable strings, so the value can't be the key. */
+@Composable
+private fun RuleEditor(
+    label: String,
+    rules: List<String>,
+    placeholder: String,
+    tone: Color,
+    onChange: (List<String>) -> Unit,
+) {
+    val colors = CodegTheme.colors
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(label, fontSize = 12.sp, fontWeight = FontWeight.Medium, color = colors.textSecondary)
+        rules.forEachIndexed { index, rule ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = rule,
+                    onValueChange = { v -> onChange(rules.toMutableList().also { it[index] = v }) },
+                    placeholder = { Text(placeholder, fontFamily = FontFamily.Monospace, fontSize = 13.sp) },
+                    singleLine = true,
+                    textStyle = androidx.compose.ui.text.TextStyle(fontFamily = FontFamily.Monospace, fontSize = 13.sp),
+                    keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                    colors = dropdownColors(colors),
+                    modifier = Modifier.weight(1f),
+                )
+                IconButton(
+                    onClick = { onChange(rules.toMutableList().also { it.removeAt(index) }) },
+                    modifier = Modifier.size(36.dp),
+                ) {
+                    Icon(
+                        Icons.Rounded.Delete,
+                        contentDescription = stringResource(R.string.common_delete),
+                        tint = tone,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+        }
+        TonalAction(stringResource(R.string.agents_cursor_add_rule)) { onChange(rules + "") }
+    }
+}
+
+/** "Actionable, not broken" — the amber the status badges already use for a state the
+ *  user can fix (here: cursor-agent installed but not signed in). */
+private val CursorActionableAmber = Color(0xFFF5BD5C)
+
 // endregion
 
 // region Model-provider picker
@@ -699,11 +977,15 @@ private fun AdvancedSection(state: AgentDetailState, vm: AgentsViewModel) {
     val colors = CodegTheme.colors
     var open by remember { mutableStateOf(false) }
     val rotation by animateFloatAsState(if (open) 180f else 0f, label = "advanced")
-    val isToml = state.agentType == AgentType.CODEX || state.agentType == AgentType.GROK
-    val label = if (isToml) "config.toml" else "config.json"
+    val label = when (state.agentType) {
+        AgentType.CODEX, AgentType.GROK -> "config.toml"
+        AgentType.CURSOR -> "cli-config.json"
+        else -> "config.json"
+    }
     val text = when (state.agentType) {
         AgentType.CODEX -> state.draft.codexConfigTomlText
         AgentType.GROK -> state.draft.grokConfigTomlText
+        AgentType.CURSOR -> state.draft.cursorCliConfigText
         else -> state.draft.configText
     }
 

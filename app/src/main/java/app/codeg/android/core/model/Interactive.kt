@@ -1,6 +1,11 @@
 package app.codeg.android.core.model
 
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.descriptors.PrimitiveKind
+import kotlinx.serialization.descriptors.PrimitiveSerialDescriptor
+import kotlinx.serialization.encoding.Decoder
+import kotlinx.serialization.encoding.Encoder
 
 /**
  * One choice the user can pick to resolve a `permission_request` (Rust
@@ -60,6 +65,31 @@ data class QuestionAnswer(
 ) {
     companion object {
         val dismissed = QuestionAnswer(answers = emptyList(), declined = true)
+    }
+}
+
+/**
+ * The user's decision on a pending Grok plan approval. snake_case on the wire; the
+ * request `Json` has no naming strategy, so the value is spelled out here.
+ */
+@Serializable(with = PlanApprovalDecision.Serializer::class)
+enum class PlanApprovalDecision(val wire: String) {
+    /** Grok leaves plan mode and starts implementing. */
+    APPROVE("approve"),
+    /** Grok revises the plan; plan mode stays active. */
+    REQUEST_CHANGES("request_changes"),
+    /** Plan mode is turned off. */
+    ABANDON("abandon");
+
+    object Serializer : KSerializer<PlanApprovalDecision> {
+        override val descriptor =
+            PrimitiveSerialDescriptor("com.codeg.PlanApprovalDecision", PrimitiveKind.STRING)
+
+        override fun serialize(encoder: Encoder, value: PlanApprovalDecision) =
+            encoder.encodeString(value.wire)
+
+        override fun deserialize(decoder: Decoder): PlanApprovalDecision =
+            entries.firstOrNull { it.wire == decoder.decodeString() } ?: APPROVE
     }
 }
 

@@ -510,6 +510,55 @@
     <string name="agents_grok_api_key_configured">XAI_API_KEY is configured.</string>
     <string name="agents_grok_api_key_none">No XAI_API_KEY set.</string>
     <string name="agents_grok_api_key_caption">Saved as XAI_API_KEY for this agent, or run “grok login” in a terminal for subscription sign-in (SuperGrok / X Premium+).</string>
+    <!-- Session detail · plan approval (Grok exit_plan_mode) -->
+    <string name="plan_approval_title">Plan ready for review</string>
+    <string name="plan_approval_subtitle">Approve to start building, or send notes to have the plan revised.</string>
+    <string name="plan_approval_empty">The agent didn\'t include a plan.</string>
+    <string name="plan_approval_request_changes">Request Changes</string>
+    <string name="plan_approval_send_notes">Send Notes</string>
+    <string name="plan_approval_notes_placeholder">What should change?</string>
+    <string name="plan_approval_approve">Approve &amp; Build</string>
+    <string name="plan_approval_abandon">Abandon Plan</string>
+    <string name="plan_approval_notes_dropped">The turn ended before your notes could be sent.</string>
+    <!-- Session detail · context compaction -->
+    <string name="compaction_running">Compacting context…</string>
+    <string name="compaction_done">Context compacted</string>
+    <string name="compaction_done_tokens">Context compacted · %1$s → %2$s tokens</string>
+    <!-- Detail · Cursor -->
+    <string name="agents_cursor_section">Cursor Configuration</string>
+    <string name="agents_cursor_footer">Both methods sign in to Cursor\'s own backend — cursor-agent has no custom-endpoint support, so there is no API URL to set.</string>
+    <string name="agents_cursor_auth_mode">Authentication Method</string>
+    <string name="agents_cursor_mode_subscription">Official Subscription</string>
+    <string name="agents_cursor_mode_api_key">Cursor API Key</string>
+    <string name="agents_cursor_mode_subscription_hint">Sign in with your Cursor account in a terminal. No credential is stored here.</string>
+    <string name="agents_cursor_mode_api_key_hint">A Cursor Dashboard account key for headless or server machines — an alternative to signing in. Not a third-party or OpenAI key.</string>
+    <string name="agents_cursor_account">Account</string>
+    <string name="agents_cursor_status_checking">Checking…</string>
+    <string name="agents_cursor_status_missing">cursor-agent isn\'t installed</string>
+    <string name="agents_cursor_status_signed_out">Not signed in</string>
+    <string name="agents_cursor_status_signed_in">Signed in</string>
+    <string name="agents_cursor_refresh">Refresh</string>
+    <string name="agents_cursor_login_hint">Run this on the machine hosting codeg, then refresh:</string>
+    <string name="agents_cursor_api_key">Cursor API Key</string>
+    <string name="agents_cursor_api_key_hint">Create one in the Cursor Dashboard under Integrations.</string>
+    <string name="agents_cursor_model">Default Model</string>
+    <string name="agents_cursor_model_default">Account default</string>
+    <string name="agents_cursor_model_footer">Passed to cursor-agent as its --model flag. Leave unset to use the account default.</string>
+    <string name="agents_cursor_models_loading">Loading models…</string>
+    <string name="agents_cursor_permissions">Permissions</string>
+    <string name="agents_cursor_permissions_footer">Rules and sandbox merge into ~/.cursor/cli-config.json, preserving keys the Cursor CLI wrote. Running sessions pick them up after a restart.</string>
+    <string name="agents_cursor_run_everything">Run Everything</string>
+    <string name="agents_cursor_run_everything_on">Cursor runs commands without asking. Deny rules below still apply.</string>
+    <string name="agents_cursor_run_everything_off">Cursor asks before running commands.</string>
+    <string name="agents_cursor_sandbox">Sandbox</string>
+    <string name="agents_cursor_option_default">Use default</string>
+    <string name="agents_cursor_sandbox_enabled">Enabled</string>
+    <string name="agents_cursor_sandbox_disabled">Disabled</string>
+    <string name="agents_cursor_allow_rules">Allow Rules</string>
+    <string name="agents_cursor_deny_rules">Deny Rules</string>
+    <string name="agents_cursor_add_rule">Add rule</string>
+    <string name="agents_cursor_rules_syntax">Rule syntax: Shell(cmd), Read(path/glob), Write(path/glob), WebFetch(domain), Mcp(server:tool) — deny always wins.</string>
+    <string name="agents_cursor_api_key_required">Enter your Cursor API key, or switch to Official Subscription.</string>
     <!-- Detail · model-provider picker -->
     <string name="agents_provider_none">No model providers configured for this agent. Add one in Settings → Model Providers.</string>
     <string name="agents_provider_endpoint">Endpoint</string>

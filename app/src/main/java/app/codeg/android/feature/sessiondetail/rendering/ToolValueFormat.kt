@@ -212,6 +212,32 @@ object ToolOutputFormat {
         return false
     }
 
+    /**
+     * The displayable text inside an MCP `CallToolResult`, after stripping the host
+     * envelope Codex wraps around EVERY MCP result on its live wire
+     * (`{result: <CallToolResult>, error: null}`). Null when [output] isn't such a
+     * payload at all, so the caller falls through to its normal handling.
+     *
+     * Without this the whole envelope reaches the renderer as opaque JSON and every
+     * MCP tool on Codex (`delegate_to_agent`, context7, codeg-mcp, …) shows raw braces
+     * instead of the text the tool returned.
+     */
+    fun mcpResultText(output: String): String? {
+        val obj = ToolDerive.parseJson(output) ?: return null
+        val peeled = McpResultEnvelope.peel(obj, McpResultEnvelope::isCallToolResult)
+        // A host envelope that failed outright carries no result to render — its own
+        // error string is the whole story, and beats dumping the envelope JSON.
+        peeled.hostError?.let { return it }
+        if (!McpResultEnvelope.isCallToolResult(peeled.obj)) return null
+        val text = (peeled.obj["content"] as? JsonArray)
+            ?.mapNotNull { (it as? JsonObject)?.strField("text")?.takeIf(String::isNotEmpty) }
+            ?.joinToString("\n")
+            .orEmpty()
+        if (text.isNotEmpty()) return text
+        // No text parts: fall back to the structured payload, pretty-printed.
+        return (peeled.obj["structuredContent"] as? JsonObject)?.let { prettyPrint(it) }
+    }
+
     /** Parse a JSON-object error body into labeled `(key, value)` fields, or null for
      *  a plain-text error. Mirrors web `renderErrorText`. */
     fun errorFields(errorText: String): List<Pair<String, String>>? {

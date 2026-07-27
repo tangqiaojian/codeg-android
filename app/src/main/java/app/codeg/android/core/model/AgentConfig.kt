@@ -138,6 +138,8 @@ object AgentEnvKeys {
         const val API_KEY = "XAI_API_KEY"
     }
 
+    /** Cursor's keys live on [CursorConfig] (the panel's env rules read them too). */
+
     data class ImportantKeys(val apiBaseUrl: List<String>, val apiKey: List<String>, val model: List<String>)
 
     /**
@@ -162,6 +164,14 @@ object AgentEnvKeys {
             listOf("GROK_XAI_API_BASE_URL", "XAI_API_BASE_URL", "API_BASE_URL"),
             listOf("XAI_API_KEY"),
             listOf("GROK_DEFAULT_MODEL", "MODEL"),
+        )
+        // cursor-agent authenticates against Cursor's own backend only: no
+        // bring-your-own endpoint (so no base-url keys at all), and the generic
+        // API_KEY alias is excluded so the auth card can't false-positive.
+        AgentType.CURSOR -> ImportantKeys(
+            emptyList(),
+            listOf(CursorConfig.API_KEY),
+            listOf(CursorConfig.MODEL),
         )
         else -> ImportantKeys(
             listOf("OPENAI_BASE_URL", "API_BASE_URL"),
@@ -408,6 +418,19 @@ data class AgentDraft(
     val grokReasoningEffort: String = "",
     val grokConfigTomlText: String = "",
 
+    // Cursor. `apiKey` above is reused for CURSOR_API_KEY. The auth method, model and
+    // Run Everything knob ride the env; the sandbox mode + permission rules are a
+    // structured patch on cli-config.json, and the raw file is the escape hatch —
+    // both persisted via `acp_update_agent_config` (cursorStructured /
+    // cursorCliConfigJson).
+    val cursorAuthMode: CursorAuthMethod = CursorAuthMethod.SUBSCRIPTION,
+    val cursorModel: String = "",
+    val cursorForce: Boolean = true,
+    val cursorSandboxMode: String = "",
+    val cursorAllowRules: List<String> = emptyList(),
+    val cursorDenyRules: List<String> = emptyList(),
+    val cursorCliConfigText: String = "",
+
     // Cline
     val clineProvider: String = "anthropic",
     val clineApiKey: String = "",
@@ -558,6 +581,20 @@ data class AgentDraft(
                     grokPermissionMode = agent.grokSettings?.permissionMode ?: "",
                     grokReasoningEffort = agent.grokSettings?.defaultReasoningEffort ?: "",
                     grokConfigTomlText = agent.grokConfigToml ?: "",
+                )
+                // Cursor: `apiKey` (CURSOR_API_KEY) is already seeded via the shared
+                // `important` path above. The rest is read straight off the env plus the
+                // backend's parsed cli-config.json projection.
+                AgentType.CURSOR -> draft = draft.copy(
+                    cursorAuthMode = CursorConfig.inferMode(env),
+                    cursorModel = env[CursorConfig.MODEL]?.trim().orEmpty(),
+                    // A fresh Cursor agent defaults to Run Everything; only an explicitly
+                    // written knob (incl. "0" = "ask before running") overrides that.
+                    cursorForce = CursorConfig.forceOrDefault(env),
+                    cursorSandboxMode = agent.cursorSettings?.sandboxMode ?: "",
+                    cursorAllowRules = agent.cursorSettings?.permissionsAllow ?: emptyList(),
+                    cursorDenyRules = agent.cursorSettings?.permissionsDeny ?: emptyList(),
+                    cursorCliConfigText = agent.cursorCliConfigJson ?: "",
                 )
                 // Kimi & Pi project their own state from `configJson` inside their
                 // self-contained panels.
@@ -862,6 +899,15 @@ object AgentConfig {
             // config.toml are persisted via acp_update_agent_config (server-merged),
             // not baked into env/config here.
             AgentType.GROK -> envText = applyGrokEnv(draft.envText, draft)
+            // Cursor: auth method / credential / model / Run Everything ride the env;
+            // the sandbox + permission rules are persisted via acp_update_agent_config.
+            AgentType.CURSOR -> envText = CursorConfig.applyEnv(
+                draft.envText,
+                mode = draft.cursorAuthMode,
+                apiKey = draft.apiKey,
+                model = draft.cursorModel,
+                force = draft.cursorForce,
+            )
             // Kimi & Pi are self-contained (saved via acp_update_kimi_code_config /
             // acp_update_pi_config), not the shared draft.
             AgentType.KIMI_CODE, AgentType.PI -> Unit
@@ -1048,6 +1094,16 @@ object AgentConfig {
         agent == AgentType.CODE_BUDDY &&
             draft.codeBuddyEnvironment == CodeBuddyEnvironment.SELF_HOSTED &&
             !isValidCodeBuddyBaseUrl(draft.codeBuddyBaseUrl)
+
+    /**
+     * Cursor in API-key mode with nothing typed: saving would write an auth mode that
+     * has no credential to go with it, so the launch would silently fall back to the
+     * browser login. Mirrors the web's `cursor.customApiKeyRequired` guard.
+     */
+    fun missingCursorApiKey(agent: AgentType, draft: AgentDraft): Boolean =
+        agent == AgentType.CURSOR &&
+            draft.cursorAuthMode == CursorAuthMethod.CUSTOM &&
+            draft.apiKey.trim().isEmpty()
 
     private fun buildClineConfig(d: AgentDraft): String {
         val config = LinkedHashMap<String, JsonElement>()

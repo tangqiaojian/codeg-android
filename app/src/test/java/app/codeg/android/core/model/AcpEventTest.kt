@@ -82,4 +82,65 @@ class AcpEventTest {
         assertEquals("conn-1", env.connectionId)
         assertEquals(AcpEvent.ContentDelta("x"), env.event)
     }
+
+    @Test
+    fun `tool call carries the agent's opaque meta`() {
+        val e = event(
+            """{"type":"tool_call","tool_call_id":"t1","title":"Context compacting","kind":"other",
+               "status":"in_progress","meta":{"contextCompaction":true,"tokensBefore":120000}}""",
+        ) as AcpEvent.ToolCall
+        assertEquals(true, e.meta?.get("contextCompaction")?.toString()?.toBoolean())
+        // A payload with no meta at all decodes to null (= "unchanged" on an update).
+        val bare = event("""{"type":"tool_call_update","tool_call_id":"t1","status":"completed"}""") as AcpEvent.ToolCallUpdate
+        assertEquals(null, bare.meta)
+    }
+
+    @Test
+    fun `plan approval request and resolved decode`() {
+        val req = event(
+            """{"type":"plan_approval_request","approval_id":"a1","tool_call_id":"t9",
+               "plan_markdown":"# Plan\n- step"}""",
+        )
+        assertEquals(AcpEvent.PlanApprovalRequest("a1", "t9", "# Plan\n- step"), req)
+        assertEquals(AcpEvent.PlanApprovalResolved("a1"), event("""{"type":"plan_approval_resolved","approval_id":"a1"}"""))
+        // An empty/missing plan still opens the approval surface — the card shows a notice.
+        val empty = event("""{"type":"plan_approval_request","approval_id":"a2"}""") as AcpEvent.PlanApprovalRequest
+        assertEquals("", empty.planMarkdown)
+        assertEquals("", empty.toolCallId)
+    }
+
+    @Test
+    fun `snapshot carries a pending plan approval`() {
+        val snap = LiveSessionSnapshot.fromWire(
+            obj(
+                """{"connection_id":"c1","status":"prompting",
+                   "pending_plan_approval":{"approval_id":"a1","tool_call_id":"t9","plan_markdown":"body"}}""",
+            ),
+            json,
+        )
+        assertEquals("a1", snap.pendingPlanApproval?.approvalId)
+        assertEquals("t9", snap.pendingPlanApproval?.toolCallId)
+        assertEquals("body", snap.pendingPlanApproval?.planMarkdown)
+        // Absent key ⇒ null, which the VM treats as "clear any stale card".
+        assertEquals(null, LiveSessionSnapshot.fromWire(obj("""{"connection_id":"c1"}"""), json).pendingPlanApproval)
+    }
+
+    @Test
+    fun `plan approval decision serializes snake_case`() {
+        assertEquals("request_changes", PlanApprovalDecision.REQUEST_CHANGES.wire)
+        assertEquals(
+            """{"connectionId":"c1","approvalId":"a1","answer":{"decision":"request_changes","feedback":"more tests"}}""",
+            CodegJson.request.encodeToString(
+                AnswerPlanApprovalBody.serializer(),
+                AnswerPlanApprovalBody("c1", "a1", PlanApprovalAnswer(PlanApprovalDecision.REQUEST_CHANGES, "more tests")),
+            ),
+        )
+        // `explicitNulls = false` on the request codec drops an absent feedback.
+        assertFalse(
+            CodegJson.request.encodeToString(
+                PlanApprovalAnswer.serializer(),
+                PlanApprovalAnswer(PlanApprovalDecision.APPROVE, null),
+            ).contains("feedback"),
+        )
+    }
 }

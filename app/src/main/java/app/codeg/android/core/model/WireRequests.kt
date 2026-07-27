@@ -98,6 +98,24 @@ data class AnswerQuestionBody(
     val answer: QuestionAnswer,
 )
 
+/**
+ * Body for `acp_answer_plan_approval` — resolves Grok's blocked `exit_plan_mode`.
+ * [PlanApprovalAnswer.feedback] carries the revision notes for a `request_changes`
+ * decision (ignored by the other two); omitted when null.
+ */
+@Serializable
+data class AnswerPlanApprovalBody(
+    val connectionId: String,
+    val approvalId: String,
+    val answer: PlanApprovalAnswer,
+)
+
+@Serializable
+data class PlanApprovalAnswer(
+    val decision: PlanApprovalDecision,
+    val feedback: String? = null,
+)
+
 @Serializable
 data class UpdateConversationPinnedBody(val conversationId: Int, val pinned: Boolean)
 
@@ -394,3 +412,22 @@ data class ValidatePiCommandBody(val command: String)
 /** Tags a long-running server op's progress stream (install/uninstall). */
 @Serializable
 data class TaskIdBody(val taskId: String)
+
+// MARK: - Cursor request bodies
+
+/**
+ * Cursor's structured controls sent inside `acp_update_agent_config`, merged onto
+ * the current on-disk `~/.cursor/cli-config.json` so keys written by the CLI's own
+ * `/config` UI survive.
+ *
+ * Unlike Grok's structured payload, an absent field here means "leave that key
+ * alone" (the backend's `Option` is a patch, not a set-or-delete), so
+ * [CodegClient.acpUpdateAgentConfig] OMITS null fields instead of sending explicit
+ * nulls. The rule lists are replaced wholesale, so an emptied list is sent as `[]`
+ * — that's a real "no rules", not an omission.
+ */
+data class CursorStructuredConfig(
+    val sandboxMode: String? = null,
+    val permissionsAllow: List<String>? = null,
+    val permissionsDeny: List<String>? = null,
+)
