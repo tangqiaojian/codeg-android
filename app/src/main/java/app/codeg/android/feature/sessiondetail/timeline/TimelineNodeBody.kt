@@ -11,12 +11,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
@@ -52,6 +54,7 @@ import app.codeg.android.core.common.RelativeTime
 import app.codeg.android.core.designsystem.markdown.MarkdownContent
 import app.codeg.android.core.designsystem.markdown.SingleBlockView
 import app.codeg.android.core.designsystem.theme.CodegTheme
+import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ContentBlock
 import app.codeg.android.core.model.MessageTurn
 import app.codeg.android.feature.sessiondetail.rendering.InlineImage
@@ -77,15 +80,7 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
     when (val c = node.content) {
         is NodeContent.User -> UserNodeBody(c.turn, modifier)
         is NodeContent.System -> SystemNodeBody(c.turn, modifier)
-        is NodeContent.AssistantBlock ->
-            if (c.streaming) {
-                Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    SingleBlockView(c.block)
-                    BlinkingCaret()
-                }
-            } else {
-                SingleBlockView(c.block, modifier)
-            }
+        is NodeContent.AssistantBlock -> AssistantNodeBody(c, node.agent, node.rail, modifier)
         is NodeContent.Reasoning -> ReasoningBlock(c.text, modifier, initiallyExpanded = c.streaming)
         is NodeContent.Tool -> ToolCallCard(c.vm, modifier)
         is NodeContent.ToolGroup -> ToolGroupCard(c.items, modifier, streaming = c.streaming)
@@ -104,27 +99,85 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
     }
 }
 
-/** The user's prompt — a left-aligned faint-accent card filling the content column. */
+/** The user's prompt — a right-aligned accent bubble with a You/time label. */
 @Composable
 private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
     val colors = CodegTheme.colors
+    val bubble = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     Column(
-        modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(colors.accent.copy(alpha = 0.12f))
-            .border(0.5.dp, colors.accent.copy(alpha = 0.28f), RoundedCornerShape(14.dp))
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        for (block in turn.blocks) {
-            when (block) {
-                is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
-                is ContentBlock.Image -> InlineImage(block.image, null)
-                is ContentBlock.ImageGeneration ->
-                    if (block.image != null) InlineImage(block.image, block.revisedPrompt)
-                    else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
-                else -> {}
+        Text(
+            text = stringResource(R.string.session_role_you) + " · " + RelativeTime.compact(turn.timestamp),
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Medium,
+            color = colors.textTertiary,
+        )
+        Column(
+            Modifier
+                .widthIn(max = 360.dp)
+                .fillMaxWidth(0.88f)
+                .clip(bubble)
+                .background(colors.accent.copy(alpha = 0.22f))
+                .border(0.5.dp, colors.accent.copy(alpha = 0.48f), bubble)
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = Alignment.Start,
+        ) {
+            for (block in turn.blocks) {
+                when (block) {
+                    is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
+                    is ContentBlock.Image -> InlineImage(block.image, null)
+                    is ContentBlock.ImageGeneration ->
+                        if (block.image != null) InlineImage(block.image, block.revisedPrompt)
+                        else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
+                    else -> {}
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AssistantNodeBody(
+    content: NodeContent.AssistantBlock,
+    agent: AgentType,
+    rail: RailStyle,
+    modifier: Modifier,
+) {
+    val colors = CodegTheme.colors
+    val shape = when (rail) {
+        RailStyle.Standalone -> RoundedCornerShape(16.dp)
+        RailStyle.Head -> RoundedCornerShape(16.dp, 16.dp, 6.dp, 6.dp)
+        RailStyle.Middle -> RoundedCornerShape(6.dp)
+        RailStyle.Tail -> RoundedCornerShape(6.dp, 6.dp, 16.dp, 16.dp)
+    }
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (rail == RailStyle.Standalone || rail == RailStyle.Head) {
+            Text(
+                text = stringResource(R.string.session_role_assistant, agent.shortName),
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = colors.textTertiary,
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .background(colors.bgElevated.copy(alpha = if (colors.isDark) 0.55f else 0.92f))
+                .border(0.5.dp, colors.hairline, shape)
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+        ) {
+            if (content.streaming) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    SingleBlockView(content.block)
+                    BlinkingCaret()
+                }
+            } else {
+                SingleBlockView(content.block)
             }
         }
     }

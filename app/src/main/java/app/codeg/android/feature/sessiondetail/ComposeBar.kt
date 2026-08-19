@@ -22,6 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Stop
@@ -34,14 +35,27 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.theme.CodegTheme
+import app.codeg.android.core.model.AcpAgentInfo
+import app.codeg.android.core.model.AgentMention
+import app.codeg.android.core.model.AgentMentionQuery
+import app.codeg.android.core.model.findActiveAgentMentionQuery
 
 /**
  * The prompt composer pinned to the bottom of the session detail screen: a
@@ -53,8 +67,8 @@ import app.codeg.android.core.designsystem.theme.CodegTheme
  */
 @Composable
 fun ComposeBar(
-    text: String,
-    onTextChange: (String) -> Unit,
+    value: TextFieldValue,
+    onValueChange: (TextFieldValue) -> Unit,
     onSend: () -> Unit,
     isInFlight: Boolean,
     onStop: () -> Unit,
@@ -62,11 +76,26 @@ fun ComposeBar(
     onPlus: (() -> Unit)? = null,
     onAttach: (() -> Unit)? = null,
     canSendOverride: Boolean = false,
+    mentionAgents: List<AcpAgentInfo> = emptyList(),
+    mentionRanges: List<AgentMention> = emptyList(),
+    onMentionSelected: (AgentMentionQuery, AcpAgentInfo) -> Unit = { _, _ -> },
+    onMentionDeleted: (Int) -> Unit = {},
 ) {
     val colors = CodegTheme.colors
-    val canSend = (text.isNotBlank() || canSendOverride) && !isInFlight
+    var manualMentionPicker by remember { mutableStateOf(false) }
+    val detectedMention = findActiveAgentMentionQuery(value.text, value.selection.start)
+    val activeMention = detectedMention?.takeUnless { query ->
+        mentionRanges.any { it.start == query.start && it.end == query.end }
+    }
+    val pickerQuery = activeMention ?: if (manualMentionPicker) {
+        AgentMentionQuery(value.selection.start, value.selection.start, "")
+    } else {
+        null
+    }
+    val hasDraft = value.text.isNotBlank() || canSendOverride
+    val canSend = hasDraft
     val sendContainer by animateColorAsState(
-        targetValue = if (isInFlight) colors.danger else colors.accent,
+        targetValue = if (isInFlight && !hasDraft) colors.danger else colors.accent,
         animationSpec = tween(220),
         label = "send-container",
     )
@@ -95,6 +124,17 @@ fun ComposeBar(
                     Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.compose_insert), modifier = Modifier.size(22.dp))
                 }
             }
+            if (mentionAgents.isNotEmpty()) {
+                FilledTonalIconButton(
+                    onClick = { manualMentionPicker = true },
+                    colors = IconButtonDefaults.filledTonalIconButtonColors(
+                        containerColor = colors.textPrimary.copy(alpha = 0.06f),
+                        contentColor = colors.textSecondary,
+                    ),
+                ) {
+                    Icon(Icons.Rounded.AlternateEmail, contentDescription = stringResource(R.string.compose_agent_mention), modifier = Modifier.size(20.dp))
+                }
+            }
             if (onAttach != null) {
                 FilledTonalIconButton(
                     onClick = onAttach,
@@ -115,7 +155,7 @@ fun ComposeBar(
                     .padding(horizontal = 14.dp, vertical = 9.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
-                if (text.isEmpty()) {
+                if (value.text.isEmpty()) {
                     Text(
                         stringResource(R.string.compose_message_placeholder),
                         color = colors.textTertiary,
@@ -123,15 +163,56 @@ fun ComposeBar(
                     )
                 }
                 BasicTextField(
-                    value = text,
-                    onValueChange = onTextChange,
+                    value = value,
+                    onValueChange = {
+                        manualMentionPicker = false
+                        onValueChange(it)
+                    },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.textPrimary),
                     cursorBrush = SolidColor(colors.accent),
                     maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown || event.key != Key.Backspace || !value.selection.collapsed) return@onPreviewKeyEvent false
+                            val cursor = value.selection.start
+                            if (mentionRanges.any { it.end == cursor }) {
+                                onMentionDeleted(cursor)
+                                true
+                            } else {
+                                false
+                            }
+                        },
                 )
+                pickerQuery?.let { query ->
+                    AgentMentionPopup(
+                        expanded = true,
+                        query = query.query,
+                        agents = mentionAgents,
+                        onSelect = { agent ->
+                            manualMentionPicker = false
+                            onMentionSelected(query, agent)
+                        },
+                        onDismiss = { manualMentionPicker = false },
+                    )
+                }
             }
 
+            if (isInFlight && hasDraft) {
+                FilledIconButton(
+                    onClick = onSend,
+                    colors = IconButtonDefaults.filledIconButtonColors(
+                        containerColor = colors.accent,
+                        contentColor = colors.onAccent,
+                    ),
+                ) {
+                    Icon(
+                        Icons.Rounded.ArrowUpward,
+                        contentDescription = stringResource(R.string.compose_queue),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+            }
             FilledIconButton(
                 onClick = { if (isInFlight) onStop() else onSend() },
                 enabled = canSend || isInFlight,

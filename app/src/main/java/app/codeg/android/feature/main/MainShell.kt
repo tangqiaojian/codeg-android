@@ -63,6 +63,8 @@ import app.codeg.android.app.AppViewModel
 import app.codeg.android.core.datastore.ServerProfile
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.feature.activity.ActivityScreen
+import app.codeg.android.feature.automations.AutomationDetailScreen
+import app.codeg.android.feature.automations.AutomationsScreen
 import app.codeg.android.feature.projects.ProjectDetailScreen
 import app.codeg.android.feature.search.SearchScreen
 import app.codeg.android.feature.projects.ProjectListScreen
@@ -71,6 +73,11 @@ import app.codeg.android.feature.settings.SettingsScreen
 import app.codeg.android.feature.server.ServerListScreen
 import app.codeg.android.feature.sessiondetail.SessionDetailScreen
 import app.codeg.android.feature.sessions.SessionListScreen
+import app.codeg.android.feature.terminal.TerminalScreen
+import app.codeg.android.feature.tokenusage.TokenUsageScreen
+import app.codeg.android.feature.todos.TodoDetailScreen
+import app.codeg.android.feature.todos.TodosScreen
+import app.codeg.android.feature.todos.WorkTaskToolsScreen
 
 /**
  * Bottom-navigation destinations. Each carries an outlined icon (unselected) and
@@ -93,6 +100,11 @@ enum class HomeTab(
 private const val ROUTE_SERVERS = "servers"
 private const val ROUTE_EDITOR = "editor"
 private const val ROUTE_NEW_TASK = "conversation_new"
+private const val ROUTE_TODOS = "todos"
+private const val ROUTE_TODO_TOOLS = "todo_tools"
+private const val ROUTE_AUTOMATIONS = "automations"
+private const val ROUTE_TOKEN_USAGE = "token_usage"
+private const val ROUTE_TERMINAL = "terminal"
 
 /**
  * Whether the bottom bar — and, by extension, the New Task FAB — is currently
@@ -187,6 +199,10 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                 "activity" -> toTab(HomeTab.ACTIVITY)
                 "search" -> toTab(HomeTab.SEARCH)
                 "settings" -> toTab(HomeTab.SETTINGS)
+                "todos", "to-dos" -> nav.navigate(ROUTE_TODOS)
+                "automations" -> nav.navigate(ROUTE_AUTOMATIONS)
+                "token_usage", "token-usage" -> nav.navigate(ROUTE_TOKEN_USAGE)
+                "terminal" -> nav.navigate(ROUTE_TERMINAL)
                 else -> {}
             }
             is app.codeg.android.core.common.DeepLinkRoute.OpenConversation -> nav.navigate("conversation/${route.id}")
@@ -267,6 +283,10 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                         onManageServers = { nav.navigate(ROUTE_SERVERS) },
                         onOpenConversation = { id -> nav.navigate("conversation/$id") },
                         onNewTask = { nav.navigate(ROUTE_NEW_TASK) },
+                        onOpenTodos = { nav.navigate(ROUTE_TODOS) },
+                        onOpenAutomations = { nav.navigate(ROUTE_AUTOMATIONS) },
+                        onOpenTokenUsage = { nav.navigate(ROUTE_TOKEN_USAGE) },
+                        onOpenTerminal = { nav.navigate(ROUTE_TERMINAL) },
                     )
                 }
             }
@@ -283,6 +303,57 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                 SettingsScreen()
             }
 
+            composable(ROUTE_TODOS) {
+                TodosScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenTask = { id -> nav.navigate("todo/$id") },
+                    onOpenTools = { nav.navigate(ROUTE_TODO_TOOLS) },
+                )
+            }
+
+            composable(ROUTE_TODO_TOOLS) {
+                WorkTaskToolsScreen(onBack = { nav.popBackStack() })
+            }
+
+            composable(ROUTE_AUTOMATIONS) {
+                AutomationsScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenAutomation = { id -> nav.navigate("automation/$id") },
+                )
+            }
+
+            composable(
+                route = "automation/{automationId}",
+                arguments = listOf(navArgument("automationId") { type = NavType.IntType }),
+            ) {
+                AutomationDetailScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                    onDeleted = { nav.popBackStack() },
+                )
+            }
+
+            composable(ROUTE_TOKEN_USAGE) {
+                TokenUsageScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                )
+            }
+
+            composable(ROUTE_TERMINAL) {
+                TerminalScreen(onBack = { nav.popBackStack() })
+            }
+
+            composable(
+                route = "todo/{taskId}",
+                arguments = listOf(navArgument("taskId") { type = NavType.IntType }),
+            ) {
+                TodoDetailScreen(
+                    onBack = { nav.popBackStack() },
+                    onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                    onDeleted = { nav.popBackStack() },
+                )
+            }
             composable(
                 route = "conversation/{id}",
                 arguments = listOf(navArgument("id") { type = NavType.IntType }),
@@ -290,6 +361,9 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                 SessionDetailScreen(
                     onBack = { nav.popBackStack() },
                     onOpenSession = { folderId -> nav.navigate("$ROUTE_NEW_TASK?folderId=$folderId") },
+                    onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                    onOpenTask = { id -> nav.navigate("todo/$id") },
+                    onOpenSettings = { nav.navigate(HomeTab.SETTINGS.route) },
                 )
             }
             composable(
@@ -304,6 +378,9 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                 SessionDetailScreen(
                     onBack = { nav.popBackStack() },
                     onOpenSession = { folderId -> nav.navigate("$ROUTE_NEW_TASK?folderId=$folderId") },
+                    onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                    onOpenTask = { id -> nav.navigate("todo/$id") },
+                    onOpenSettings = { nav.navigate(HomeTab.SETTINGS.route) },
                 )
             }
 

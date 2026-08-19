@@ -5,6 +5,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -13,11 +14,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.CheckCircle
+import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ErrorOutline
@@ -26,6 +31,8 @@ import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.PushPin
+import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -38,6 +45,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -86,6 +95,10 @@ fun SessionListScreen(
     onManageServers: () -> Unit,
     onOpenConversation: (Int) -> Unit,
     onNewTask: () -> Unit,
+    onOpenTodos: () -> Unit,
+    onOpenAutomations: () -> Unit,
+    onOpenTokenUsage: () -> Unit,
+    onOpenTerminal: () -> Unit,
     viewModel: SessionListViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
@@ -94,6 +107,7 @@ fun SessionListScreen(
     // re-runs the grouping flow; rememberSaveable keeps the fold state across
     // rotation / process death.
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
+    var collapsedChildren by rememberSaveable { mutableStateOf(emptySet<Int>()) }
     val colors = CodegTheme.colors
     val selectedName = servers.firstOrNull { it.id == selectedId }?.name
         ?: stringResource(R.string.app_name)
@@ -113,6 +127,22 @@ fun SessionListScreen(
                     )
                 },
                 actions = {
+                    IconButton(onClick = onOpenTodos) {
+                        Icon(
+                            Icons.Rounded.CheckCircle,
+                            contentDescription = stringResource(R.string.todos_title),
+                            tint = colors.textSecondary,
+                        )
+                    }
+                    IconButton(onClick = onOpenAutomations) {
+                        Icon(Icons.Rounded.Schedule, contentDescription = stringResource(R.string.automations_title), tint = colors.textSecondary)
+                    }
+                    IconButton(onClick = onOpenTokenUsage) {
+                        Icon(Icons.Rounded.Analytics, contentDescription = stringResource(R.string.token_usage_title), tint = colors.textSecondary)
+                    }
+                    IconButton(onClick = onOpenTerminal) {
+                        Icon(Icons.Rounded.Terminal, contentDescription = stringResource(R.string.terminal_title), tint = colors.textSecondary)
+                    }
                     IconButton(onClick = onManageServers) {
                         Icon(
                             Icons.Rounded.Dns,
@@ -173,25 +203,43 @@ fun SessionListScreen(
                 }
 
                 else -> {
-                    PullToRefreshBox(
-                        isRefreshing = ui.isRefreshing,
-                        onRefresh = viewModel::refresh,
-                        modifier = Modifier.fillMaxSize(),
-                    ) {
-                        SessionList(
-                            sections = sections,
-                            collapsed = collapsed,
-                            onToggleSection = { id ->
-                                collapsed = if (id in collapsed) collapsed - id else collapsed + id
-                            },
-                            onOpenConversation = onOpenConversation,
-                            onTogglePin = { conv -> viewModel.setPinned(conv, !conv.isPinned) },
-                            // A refresh that failed over a still-populated list: surface
-                            // it inline above the rows rather than swallowing it.
-                            refreshError = ui.error,
-                            onRetry = viewModel::refresh,
-                            onDismissError = viewModel::dismissError,
+                    Column(Modifier.fillMaxSize()) {
+                        SessionListSearchField(
+                            value = ui.search,
+                            onValueChange = viewModel::onSearchChange,
                         )
+                        if (sections.isEmpty() && ui.search.isNotBlank()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                EmptyState(
+                                    icon = Icons.Rounded.Search,
+                                    title = stringResource(R.string.search_no_results),
+                                    message = stringResource(R.string.search_no_results_for, ui.search.trim()),
+                                )
+                            }
+                        } else {
+                            PullToRefreshBox(
+                                isRefreshing = ui.isRefreshing,
+                                onRefresh = viewModel::refresh,
+                                modifier = Modifier.fillMaxSize(),
+                            ) {
+                                SessionList(
+                                    sections = sections,
+                                    collapsed = collapsed,
+                                    collapsedChildren = collapsedChildren,
+                                    onToggleSection = { id ->
+                                        collapsed = if (id in collapsed) collapsed - id else collapsed + id
+                                    },
+                                    onToggleChildren = { id ->
+                                        collapsedChildren = if (id in collapsedChildren) collapsedChildren - id else collapsedChildren + id
+                                    },
+                                    onOpenConversation = onOpenConversation,
+                                    onTogglePin = { conv -> viewModel.setPinned(conv, !conv.isPinned) },
+                                    refreshError = ui.error,
+                                    onRetry = viewModel::refresh,
+                                    onDismissError = viewModel::dismissError,
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -200,10 +248,49 @@ fun SessionListScreen(
 }
 
 @Composable
+private fun SessionListSearchField(value: String, onValueChange: (String) -> Unit) {
+    val colors = CodegTheme.colors
+    TextField(
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        placeholder = { Text(stringResource(R.string.sessions_search_placeholder)) },
+        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
+        trailingIcon = {
+            if (value.isNotEmpty()) {
+                IconButton(onClick = { onValueChange("") }) {
+                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.search_clear))
+                }
+            }
+        },
+        singleLine = true,
+        shape = RoundedCornerShape(28.dp),
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = colors.codeSurface,
+            unfocusedContainerColor = colors.codeSurface,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+            cursorColor = colors.accent,
+            focusedLeadingIconColor = colors.textSecondary,
+            unfocusedLeadingIconColor = colors.textTertiary,
+            focusedTrailingIconColor = colors.textSecondary,
+            unfocusedTrailingIconColor = colors.textTertiary,
+            focusedTextColor = colors.textPrimary,
+            unfocusedTextColor = colors.textPrimary,
+            focusedPlaceholderColor = colors.textTertiary,
+            unfocusedPlaceholderColor = colors.textTertiary,
+        ),
+    )
+}
+
+@Composable
 private fun SessionList(
     sections: List<SessionSection>,
     collapsed: Set<String>,
+    collapsedChildren: Set<Int>,
     onToggleSection: (String) -> Unit,
+    onToggleChildren: (Int) -> Unit,
     onOpenConversation: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
     refreshError: String?,
@@ -231,44 +318,131 @@ private fun SessionList(
         }
 
         sections.forEach { section ->
-            val isCollapsed = section.id in collapsed
-            item(key = "h-${section.id}", contentType = "header") {
-                val style = sectionStyle(section.kind)
-                CollapsibleSectionHeader(
-                    icon = style.icon,
-                    tint = style.tint,
-                    label = style.label,
-                    count = section.count,
-                    collapsed = isCollapsed,
-                    onToggle = { onToggleSection(section.id) },
-                    collapsible = section.count > 0,
-                    modifier = Modifier.animateItem(),
-                )
-            }
-            if (!isCollapsed) {
-                items(
-                    items = section.rows,
-                    key = { "row-${it.conversation.id}" },
-                    contentType = { "row" },
-                ) { row ->
-                    SessionRow(
-                        conversation = row.conversation,
-                        onClick = { onOpenConversation(row.conversation.id) },
-                        modifier = Modifier.animateItem(),
-                        folderName = row.folderName,
-                        onTogglePin = { onTogglePin(row.conversation) },
-                    )
-                }
-            }
+            sessionSectionItems(
+                section = section,
+                collapsed = collapsed,
+                collapsedChildren = collapsedChildren,
+                onToggleSection = onToggleSection,
+                onToggleChildren = onToggleChildren,
+                onOpenConversation = onOpenConversation,
+                onTogglePin = onTogglePin,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.sessionSectionItems(
+    section: SessionSection,
+    collapsed: Set<String>,
+    collapsedChildren: Set<Int>,
+    onToggleSection: (String) -> Unit,
+    onToggleChildren: (Int) -> Unit,
+    onOpenConversation: (Int) -> Unit,
+    onTogglePin: (ConversationSummary) -> Unit,
+) {
+    val isCollapsed = section.id in collapsed
+    item(key = "h-${section.id}", contentType = "header") {
+        val style = sectionStyle(section.kind, section.breadcrumb)
+        val folder = section.kind as? SectionKind.Folder
+        if (folder != null) {
+            HierarchySectionHeader(
+                icon = style.icon,
+                tint = style.tint,
+                label = style.label,
+                subtitle = style.subtitle,
+                count = section.count,
+                collapsed = isCollapsed,
+                onToggle = { onToggleSection(section.id) },
+                collapsible = section.count > 0,
+                depth = folder.depth,
+                emphasized = !folder.isWorktree,
+                modifier = Modifier.animateItem(),
+            )
+        } else {
+            CollapsibleSectionHeader(
+                icon = style.icon,
+                tint = style.tint,
+                label = style.label,
+                count = section.count,
+                collapsed = isCollapsed,
+                onToggle = { onToggleSection(section.id) },
+                collapsible = section.count > 0,
+                modifier = Modifier.animateItem(),
+            )
+        }
+    }
+    if (!isCollapsed) {
+        section.rows.forEach { row ->
+            sessionRowItems(
+                row = row,
+                collapsedChildren = collapsedChildren,
+                onToggleChildren = onToggleChildren,
+                onOpenConversation = onOpenConversation,
+                onTogglePin = onTogglePin,
+            )
+        }
+        section.nested.forEach { child ->
+            sessionSectionItems(
+                section = child,
+                collapsed = collapsed,
+                collapsedChildren = collapsedChildren,
+                onToggleSection = onToggleSection,
+                onToggleChildren = onToggleChildren,
+                onOpenConversation = onOpenConversation,
+                onTogglePin = onTogglePin,
+            )
+        }
+    }
+}
+
+private fun LazyListScope.sessionRowItems(
+    row: SessionRowItem,
+    collapsedChildren: Set<Int>,
+    onToggleChildren: (Int) -> Unit,
+    onOpenConversation: (Int) -> Unit,
+    onTogglePin: (ConversationSummary) -> Unit,
+) {
+    val expanded = row.children.isNotEmpty() && row.conversation.id !in collapsedChildren
+    item(key = "row-${row.conversation.id}", contentType = "row") {
+        SessionRow(
+            conversation = row.conversation,
+            onClick = { onOpenConversation(row.conversation.id) },
+            modifier = Modifier.animateItem(),
+            folderName = row.folderName,
+            onTogglePin = { onTogglePin(row.conversation) },
+            depth = row.depth,
+            childCount = row.children.size,
+            childrenExpanded = expanded,
+            onToggleChildren = if (row.children.isNotEmpty()) {
+                { onToggleChildren(row.conversation.id) }
+            } else {
+                null
+            },
+        )
+    }
+    if (expanded) {
+        row.children.forEach { child ->
+            sessionRowItems(
+                row = child,
+                collapsedChildren = collapsedChildren,
+                onToggleChildren = onToggleChildren,
+                onOpenConversation = onOpenConversation,
+                onTogglePin = onTogglePin,
+            )
         }
     }
 }
 
 /** Resolved header presentation for a [SectionKind] (icon + theme-aware tint + label). */
-private data class SectionStyle(val icon: ImageVector, val tint: Color, val label: String)
+private data class SectionStyle(
+    val icon: ImageVector,
+    val tint: Color,
+    val label: String,
+    val subtitle: String? = null,
+)
 
 @Composable
-private fun sectionStyle(kind: SectionKind): SectionStyle {
+private fun sectionStyle(kind: SectionKind, breadcrumb: String? = null): SectionStyle {
     val colors = CodegTheme.colors
     return when (kind) {
         SectionKind.Pinned -> SectionStyle(
@@ -276,11 +450,24 @@ private fun sectionStyle(kind: SectionKind): SectionStyle {
             tint = colors.accent,
             label = stringResource(R.string.sessions_pinned),
         )
-        is SectionKind.Folder -> SectionStyle(
-            icon = Icons.Rounded.Folder,
-            tint = colorFromHex(kind.colorHex) ?: colors.accent,
-            label = kind.name,
-        )
+        is SectionKind.Folder -> {
+            val kindLabel = when {
+                kind.isWorktree -> stringResource(R.string.sessions_worktree)
+                else -> stringResource(R.string.sessions_workspace)
+            }
+            val subtitle = buildList {
+                add(kindLabel)
+                breadcrumb?.takeIf { kind.isWorktree && it.isNotBlank() }?.let { add(it) }
+                kind.gitBranch?.takeIf { !kind.isWorktree && it.isNotBlank() }?.let { add(it) }
+                kind.path.takeIf { it.isNotBlank() && !kind.isWorktree }?.let { add(it) }
+            }.joinToString(" · ")
+            SectionStyle(
+                icon = Icons.Rounded.Folder,
+                tint = colorFromHex(kind.colorHex) ?: colors.accent,
+                label = kind.name,
+                subtitle = subtitle,
+            )
+        }
         SectionKind.Other -> SectionStyle(
             icon = Icons.Rounded.Inbox,
             tint = colors.textSecondary,

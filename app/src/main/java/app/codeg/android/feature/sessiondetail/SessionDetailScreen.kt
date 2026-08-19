@@ -37,11 +37,16 @@ import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.KeyboardArrowUp
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -62,7 +67,9 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -71,17 +78,32 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.component.AgentAvatar
 import app.codeg.android.core.designsystem.component.EmptyState
+import app.codeg.android.core.designsystem.component.GlassCard
 import app.codeg.android.core.designsystem.component.InlineError
 import app.codeg.android.core.designsystem.component.LoadingView
+import app.codeg.android.core.designsystem.diff.DiffView
+import app.codeg.android.core.designsystem.diff.UnifiedDiff
 import app.codeg.android.core.designsystem.theme.CodegTheme
+import app.codeg.android.core.model.AgentMentionDraft
+import app.codeg.android.core.model.AgentMentionTarget
 import app.codeg.android.feature.sessiondetail.interactive.AskQuestionCard
 import app.codeg.android.feature.sessiondetail.interactive.PermissionRequestCard
 import app.codeg.android.feature.sessiondetail.interactive.PlanApprovalCard
+import app.codeg.android.feature.sessiondetail.rendering.DelegationActions
+import app.codeg.android.feature.sessiondetail.rendering.LocalDelegationActions
 import app.codeg.android.feature.sessiondetail.timeline.LocalTimelineScroll
 import app.codeg.android.feature.sessiondetail.timeline.NodeBody
 import app.codeg.android.feature.sessiondetail.timeline.NodeContent
 import app.codeg.android.feature.sessiondetail.timeline.TimelineRow
 import app.codeg.android.feature.sessiondetail.timeline.TranscriptTimeline
+import app.codeg.android.core.model.ConversationStatus
+import app.codeg.android.feature.todos.TaskStatusPill
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
 import kotlinx.coroutines.launch
 
 /**
@@ -95,13 +117,20 @@ import kotlinx.coroutines.launch
 fun SessionDetailScreen(
     onBack: () -> Unit,
     onOpenSession: (Int) -> Unit = {},
+    onOpenConversation: (Int) -> Unit = {},
+    onOpenTask: (Int) -> Unit = {},
+    onOpenSettings: (() -> Unit)? = null,
     viewModel: SessionDetailViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
     val colors = CodegTheme.colors
-    var draft by remember { mutableStateOf("") }
+    var draft by remember { mutableStateOf(AgentMentionDraft("")) }
+    var composerValue by remember { mutableStateOf(TextFieldValue("")) }
     var showInsert by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
+    var findOpen by remember { mutableStateOf(false) }
+    var findQuery by remember { mutableStateOf("") }
+    var findIndex by remember { mutableStateOf(0) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -110,7 +139,10 @@ fun SessionDetailScreen(
     // when the composer is empty, so it never clobbers a fresh draft typed during the send.
     LaunchedEffect(ui.restoreDraft) {
         ui.restoreDraft?.let { restored ->
-            if (draft.isBlank()) draft = restored
+            if (draft.text.isBlank()) {
+                draft = AgentMentionDraft.fromWire(restored)
+                composerValue = TextFieldValue(draft.text, TextRange(draft.text.length))
+            }
             viewModel.consumeRestoredDraft()
         }
     }
@@ -127,7 +159,11 @@ fun SessionDetailScreen(
     if (showInsert) {
         ComposeInsertSheet(
             viewModel = viewModel,
-            onInsert = { transform -> draft = transform(draft) },
+            onInsert = { transform ->
+                val updated = draft.applyTextChange(transform(draft.text))
+                draft = updated
+                composerValue = TextFieldValue(updated.text, TextRange(updated.text.length))
+            },
             onDismiss = { showInsert = false },
         )
     }
@@ -178,6 +214,14 @@ fun SessionDetailScreen(
             }
         }
     }
+    val findHits = remember(ui.turns, findQuery) { TranscriptSearch.findHits(ui.turns, findQuery) }
+    LaunchedEffect(findQuery) { findIndex = 0 }
+    LaunchedEffect(findOpen, findHits, findIndex) {
+        if (findOpen && findHits.isNotEmpty()) {
+            val hit = findHits.getOrNull(findIndex.coerceIn(0, findHits.lastIndex)) ?: return@LaunchedEffect
+            scrollToId(hit.turnId)
+        }
+    }
 
     val title = when {
         ui.isNew -> stringResource(R.string.session_new_task)
@@ -189,7 +233,21 @@ fun SessionDetailScreen(
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         topBar = {
             TopAppBar(
-                title = { Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                title = {
+                    Column {
+                        Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        val subtitle = sessionHeaderSubtitle(ui)
+                        if (subtitle != null) {
+                            Text(
+                                subtitle,
+                                fontSize = 12.sp,
+                                color = colors.textSecondary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
@@ -200,6 +258,15 @@ fun SessionDetailScreen(
                     }
                 },
                 actions = {
+                    if (!ui.isNew) {
+                        IconButton(onClick = { findOpen = !findOpen }) {
+                            Icon(
+                                Icons.Rounded.Search,
+                                contentDescription = stringResource(R.string.session_find),
+                                tint = colors.textSecondary,
+                            )
+                        }
+                    }
                     // The agent avatar is the options button (mode / config / folder / branch).
                     Box(
                         Modifier
@@ -223,6 +290,23 @@ fun SessionDetailScreen(
         },
         bottomBar = {
             Column(Modifier.imePadding()) {
+                SessionFailureBanner(
+                    failures = ui.sessionFailures,
+                    canOpenNewSession = ui.selectedFolderId != null || ui.summary?.folderId != null,
+                    canOpenSettings = onOpenSettings != null,
+                    onAction = { action, _ ->
+                        viewModel.onSessionFailureAction(
+                            action = action,
+                            onNewSession = { folderId -> onOpenSession(folderId) },
+                            onLogin = { onOpenSettings?.invoke() },
+                        )
+                    },
+                    onDismiss = viewModel::dismissSessionFailures,
+                )
+                MessageQueueBar(
+                    queue = ui.queuedPrompts,
+                    onRemove = viewModel::removeQueuedPrompt,
+                )
                 ui.pendingPermission?.let { p ->
                     PermissionRequestCard(
                         parsed = p.parsed,
@@ -265,89 +349,319 @@ fun SessionDetailScreen(
                 }
                 if (ui.attachments.isNotEmpty()) AttachmentStrip(ui.attachments, onRemove = viewModel::removeAttachment)
                 ComposeBar(
-                    text = draft,
-                    onTextChange = { draft = it },
+                    value = composerValue,
+                    onValueChange = { next ->
+                        val updated = draft.applyTextChange(next.text)
+                        draft = updated
+                        composerValue = next.copy(text = updated.text)
+                    },
                     onSend = {
-                        viewModel.send(draft)
-                        draft = ""
+                        viewModel.send(draft.toWire())
+                        draft = AgentMentionDraft("")
+                        composerValue = TextFieldValue("")
                     },
                     isInFlight = ui.isInFlight,
                     onStop = viewModel::cancel,
                     onPlus = { showInsert = true },
                     onAttach = { pickImages.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
                     canSendOverride = ui.attachments.isNotEmpty(),
+                    mentionAgents = ui.availableMentionAgents,
+                    mentionRanges = draft.mentions,
+                    onMentionSelected = { query, selected ->
+                        val label = selected.name.trim().ifEmpty { selected.agentType.displayName }
+                        val updated = draft.insertMention(
+                            query.start,
+                            query.end,
+                            AgentMentionTarget(selected.agentType, label),
+                        )
+                        draft = updated
+                        composerValue = TextFieldValue(
+                            text = updated.text,
+                            selection = TextRange(query.start + "@${label.removePrefix("@")}".length),
+                        )
+                    },
+                    onMentionDeleted = { cursor ->
+                        val mention = draft.mentions.firstOrNull { it.end == cursor }
+                        draft.deleteMentionBeforeCursor(cursor)?.let { updated ->
+                            draft = updated
+                            composerValue = TextFieldValue(updated.text, TextRange(mention?.start ?: cursor))
+                        }
+                    },
                 )
             }
         },
     ) { padding ->
-        Box(Modifier.padding(padding).fillMaxSize()) {
-            when {
-                ui.loading && !hasContent ->
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        LoadingView(message = stringResource(R.string.common_loading))
-                    }
-
-                ui.error != null && !hasContent ->
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        InlineError(
-                            icon = Icons.Rounded.Forum,
-                            title = stringResource(R.string.session_load_failed),
-                            message = ui.error!!,
-                            onRetry = viewModel::load,
-                            retryLabel = stringResource(R.string.common_retry),
-                        )
-                    }
-
-                !hasContent ->
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        EmptyState(
-                            icon = Icons.Rounded.Forum,
-                            title = if (ui.isNew) {
-                                stringResource(R.string.session_new_task)
-                            } else {
-                                stringResource(R.string.session_empty_title)
-                            },
-                            message = stringResource(R.string.session_empty_message),
-                        )
-                    }
-
-                else -> CompositionLocalProvider(LocalTimelineScroll provides scrollToId) {
-                    LazyColumn(
-                        state = listState,
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
-                    ) {
-                        items(nodes, key = { it.id }, contentType = { it.contentTypeKey }) { node ->
-                            TimelineRow(
-                                marker = node.marker,
-                                connectTop = node.connectTop,
-                                connectBottom = node.connectBottom,
-                                startsGroup = node.startsGroup,
-                                rail = node.rail,
-                                // Block rows skip item animation: streaming appends a tail
-                                // block on every blank line, and the live→persisted re-key
-                                // would otherwise flash all N blocks of the reply at once.
-                                modifier = if (node.content is NodeContent.AssistantBlock) Modifier else Modifier.animateItem(),
-                            ) {
-                                NodeBody(node)
-                            }
+        Column(Modifier.padding(padding).fillMaxSize()) {
+            if (findOpen) {
+                TranscriptFindBar(
+                    query = findQuery,
+                    onQueryChange = { findQuery = it },
+                    matchIndex = findIndex,
+                    matchCount = findHits.size,
+                    onPrevious = {
+                        if (findHits.isNotEmpty()) {
+                            findIndex = (findIndex - 1 + findHits.size) % findHits.size
                         }
-                        item(key = "__timeline_bottom_anchor__") { Spacer(Modifier.height(1.dp)) }
+                    },
+                    onNext = {
+                        if (findHits.isNotEmpty()) {
+                            findIndex = (findIndex + 1) % findHits.size
+                        }
+                    },
+                    onClose = {
+                        findOpen = false
+                        findQuery = ""
+                    },
+                )
+            }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                when {
+                    ui.loading && !hasContent ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            LoadingView(message = stringResource(R.string.common_loading))
+                        }
+
+                    ui.error != null && !hasContent ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            InlineError(
+                                icon = Icons.Rounded.Forum,
+                                title = stringResource(R.string.session_load_failed),
+                                message = ui.error!!,
+                                onRetry = viewModel::load,
+                                retryLabel = stringResource(R.string.common_retry),
+                            )
+                        }
+
+                    !hasContent ->
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            EmptyState(
+                                icon = Icons.Rounded.Forum,
+                                title = if (ui.isNew) {
+                                    stringResource(R.string.session_new_task)
+                                } else {
+                                    stringResource(R.string.session_empty_title)
+                                },
+                                message = stringResource(R.string.session_empty_message),
+                            )
+                        }
+
+                    else -> CompositionLocalProvider(
+                        LocalTimelineScroll provides scrollToId,
+                        LocalDelegationActions provides DelegationActions(
+                            onOpenConversation = onOpenConversation,
+                            onOpenTask = onOpenTask,
+                            taskIdForConversation = { id -> ui.taskIdByConversation[id] },
+                        ),
+                    ) {
+                        LazyColumn(
+                            state = listState,
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(start = 12.dp, end = 16.dp, top = 8.dp, bottom = 12.dp),
+                        ) {
+                            if (ui.relatedTask != null || ui.taskChangedFiles.isNotEmpty() || ui.gitChanges.isNotEmpty()) {
+                                item(key = "session-changes", contentType = "changes") {
+                                    SessionChangesCard(
+                                        ui = ui,
+                                        onOpenTask = onOpenTask,
+                                        onOpenFile = { path, fromTask -> viewModel.loadFileDiff(path, fromTask) },
+                                        modifier = Modifier.padding(bottom = 10.dp),
+                                    )
+                                }
+                            }
+                            items(nodes, key = { it.id }, contentType = { it.contentTypeKey }) { node ->
+                                TimelineRow(
+                                    marker = node.marker,
+                                    connectTop = node.connectTop,
+                                    connectBottom = node.connectBottom,
+                                    startsGroup = node.startsGroup,
+                                    rail = node.rail,
+                                    modifier = if (node.content is NodeContent.AssistantBlock) Modifier else Modifier.animateItem(),
+                                ) {
+                                    NodeBody(node)
+                                }
+                            }
+                            item(key = "__timeline_bottom_anchor__") { Spacer(Modifier.height(1.dp)) }
+                        }
+                    }
+                }
+                Box(
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp),
+                ) {
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = hasContent && !isAtBottom,
+                        enter = fadeIn(tween(150)),
+                        exit = fadeOut(tween(150)),
+                    ) {
+                        JumpToLatestButton {
+                            stick = true
+                            scope.launch { listState.animateScrollToItem(nodes.size) }
+                        }
                     }
                 }
             }
-            // Floating "jump to latest" — overlaid bottom-center OVER the transcript rather
-            // than sitting in the composer stack, where its full-width row pushed the bottom
-            // of the transcript up under a band. Shown only while scrolled up.
-            AnimatedVisibility(
-                visible = hasContent && !isAtBottom,
-                enter = fadeIn(tween(150)),
-                exit = fadeOut(tween(150)),
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp),
+        }
+    }
+
+    if (ui.selectedDiffPath != null) {
+        val colors = CodegTheme.colors
+        ModalBottomSheet(onDismissRequest = viewModel::dismissDiff, containerColor = colors.bgElevated) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                JumpToLatestButton {
-                    stick = true
-                    scope.launch { listState.animateScrollToItem(nodes.size) }
+                Text(
+                    ui.selectedDiffPath ?: "",
+                    color = colors.textPrimary,
+                    fontWeight = FontWeight.SemiBold,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 13.sp,
+                )
+                when {
+                    ui.changesLoading && ui.selectedDiff == null -> LoadingView(message = stringResource(R.string.common_loading))
+                    else -> {
+                        val parsed = ui.selectedDiff?.let { UnifiedDiff.parse(it) }
+                        if (parsed != null) {
+                            DiffView(parsed)
+                        } else {
+                            Text(
+                                ui.selectedDiff?.ifBlank { stringResource(R.string.todos_diff_empty) }
+                                    ?: stringResource(R.string.todos_diff_empty),
+                                color = colors.textSecondary,
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TranscriptFindBar(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    matchIndex: Int,
+    matchCount: Int,
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onClose: () -> Unit,
+) {
+    val colors = CodegTheme.colors
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(colors.bgElevated.copy(alpha = 0.96f))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextField(
+            value = query,
+            onValueChange = onQueryChange,
+            modifier = Modifier.weight(1f),
+            placeholder = { Text(stringResource(R.string.session_find_placeholder)) },
+            singleLine = true,
+            colors = TextFieldDefaults.colors(
+                focusedContainerColor = colors.codeSurface,
+                unfocusedContainerColor = colors.codeSurface,
+                focusedIndicatorColor = Color.Transparent,
+                unfocusedIndicatorColor = Color.Transparent,
+                disabledIndicatorColor = Color.Transparent,
+                cursorColor = colors.accent,
+                focusedTextColor = colors.textPrimary,
+                unfocusedTextColor = colors.textPrimary,
+                focusedPlaceholderColor = colors.textTertiary,
+                unfocusedPlaceholderColor = colors.textTertiary,
+            ),
+        )
+        Text(
+            if (matchCount == 0) "0/0" else "${matchIndex + 1}/$matchCount",
+            color = colors.textSecondary,
+            fontSize = 12.sp,
+            modifier = Modifier.padding(horizontal = 6.dp),
+        )
+        IconButton(onClick = onPrevious, enabled = matchCount > 0) {
+            Icon(Icons.Rounded.KeyboardArrowUp, contentDescription = stringResource(R.string.session_find_previous))
+        }
+        IconButton(onClick = onNext, enabled = matchCount > 0) {
+            Icon(Icons.Rounded.KeyboardArrowDown, contentDescription = stringResource(R.string.session_find_next))
+        }
+        IconButton(onClick = onClose) {
+            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_dismiss))
+        }
+    }
+}
+
+@Composable
+private fun conversationStatusText(status: ConversationStatus): String = stringResource(
+    when (status) {
+        ConversationStatus.IN_PROGRESS -> R.string.session_status_running
+        ConversationStatus.PENDING_REVIEW -> R.string.session_status_review
+        ConversationStatus.COMPLETED -> R.string.session_status_done
+        ConversationStatus.CANCELLED -> R.string.session_status_cancelled
+        ConversationStatus.OTHER -> R.string.session_status_other
+    },
+)
+
+@Composable
+private fun sessionHeaderSubtitle(ui: SessionDetailUiState): String? {
+    val parts = buildList {
+        ui.folderBreadcrumb?.takeIf { it.isNotBlank() }?.let { add(it) }
+        add(ui.agent.shortName)
+        ui.summary?.status?.let { add(conversationStatusText(it)) }
+    }
+    return parts.takeIf { it.isNotEmpty() }?.joinToString(" · ")
+}
+
+@Composable
+private fun SessionChangesCard(
+    ui: SessionDetailUiState,
+    onOpenTask: (Int) -> Unit,
+    onOpenFile: (String, Boolean) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CodegTheme.colors
+    GlassCard(modifier.fillMaxWidth(), padding = 12.dp) {
+        Text(stringResource(R.string.session_changes_title), color = colors.textPrimary, fontWeight = FontWeight.SemiBold)
+        ui.relatedTask?.let { task ->
+            Row(
+                Modifier.fillMaxWidth().padding(top = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(task.title, color = colors.textSecondary, fontSize = 13.sp, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                TaskStatusPill(task.status)
+            }
+            val summary = listOfNotNull(
+                task.filesChanged?.let { stringResource(R.string.session_changes_file_count, it) },
+                task.additions?.takeIf { it > 0 }?.let { "+$it" },
+                task.deletions?.takeIf { it > 0 }?.let { "−$it" },
+            ).joinToString("  ")
+            if (summary.isNotBlank()) {
+                Text(summary, color = colors.textTertiary, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+            }
+            TextButton(onClick = { onOpenTask(task.id) }) {
+                Text(stringResource(R.string.delegation_open_task))
+            }
+        }
+        if (ui.taskChangedFiles.isNotEmpty()) {
+            Text(stringResource(R.string.todos_changed_files), color = colors.textTertiary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            ui.taskChangedFiles.forEach { file ->
+                TextButton(onClick = { onOpenFile(file.file, true) }) {
+                    Text("${file.file} (+${file.additions}/−${file.deletions})", fontSize = 12.sp)
+                }
+            }
+        } else if (ui.gitChanges.isNotEmpty()) {
+            Text(stringResource(R.string.todos_changed_files), color = colors.textTertiary, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+            ui.gitChanges.take(12).forEach { entry ->
+                TextButton(onClick = { onOpenFile(entry.path, false) }) {
+                    Text("${entry.change.badge}  ${entry.path}", fontSize = 12.sp)
                 }
             }
         }

@@ -107,7 +107,10 @@ class EventStream(
 
             // Legacy global side-channel frames.
             (root["channel"] as? JsonPrimitive)?.let { ch ->
-                return if (ch.contentOrNull == "__ready__") StreamFrame.Ready else null
+                val channel = ch.contentOrNull ?: return null
+                if (channel == "__ready__") return StreamFrame.Ready
+                if (channel.substringBefore("://") !in setOf("terminal", "task", "automation")) return null
+                return StreamFrame.Global(channel, root["payload"] ?: JsonObject(emptyMap()))
             }
 
             // Attach-protocol frames.

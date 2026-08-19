@@ -59,9 +59,9 @@ class SessionListViewModel @Inject constructor(
      */
     val sections: StateFlow<List<SessionSection>> =
         _ui
-            .map { GroupingInput(it.folders, it.conversations) }
+            .map { GroupingInput(it.folders, it.conversations, it.search) }
             .distinctUntilChanged()
-            .map { buildSessionSections(it.folders, it.conversations) }
+            .map { buildSessionSections(it.folders, it.conversations, it.search) }
             .flowOn(Dispatchers.Default)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
@@ -69,6 +69,7 @@ class SessionListViewModel @Inject constructor(
     private data class GroupingInput(
         val folders: List<FolderDetail>,
         val conversations: List<ConversationSummary>,
+        val search: String,
     )
 
     private var client: CodegClient? = null
@@ -124,7 +125,7 @@ class SessionListViewModel @Inject constructor(
         try {
             val result = coroutineScope {
                 val folders = async { active.listFolders() }
-                val conversations = async { active.listConversations() }
+                val conversations = async { active.listConversations(includeChildren = true) }
                 folders.await() to conversations.await()
             }
             if (token != fetchGeneration) return
@@ -170,12 +171,15 @@ class SessionListViewModel @Inject constructor(
     }
 
     fun dismissError() = _ui.update { it.copy(error = null) }
+
+    fun onSearchChange(value: String) = _ui.update { it.copy(search = value) }
 }
 
 /** Raw list state; the grouped display is derived by [SessionGrouping]. */
 data class SessionListUiState(
     val folders: List<FolderDetail> = emptyList(),
     val conversations: List<ConversationSummary> = emptyList(),
+    val search: String = "",
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val hasLoaded: Boolean = false,
@@ -259,9 +263,34 @@ object SessionGrouping {
     private fun matching(convs: List<ConversationSummary>, search: String): List<ConversationSummary> {
         val query = search.trim()
         if (query.isEmpty()) return convs
-        return convs.filter { conv ->
-            (conv.trimmedTitle?.contains(query, ignoreCase = true) == true) ||
-                (conv.model?.contains(query, ignoreCase = true) == true)
-        }
+        return convs.filter { matches(it, query) }
+    }
+
+    /**
+     * Conversations that match [search], plus any parent needed so a matching
+     * child still renders under its parent row.
+     */
+    fun matchingWithParents(
+        conversations: List<ConversationSummary>,
+        search: String,
+    ): List<ConversationSummary> {
+        val query = search.trim()
+        if (query.isEmpty()) return conversations
+        val direct = conversations.filter { matches(it, query) }.map { it.id }.toSet()
+        val parentIds = conversations.mapNotNull { conv ->
+            conv.parentId.takeIf { conv.id in direct }
+        }.toSet()
+        val keep = direct + parentIds
+        return conversations.filter { it.id in keep }
+    }
+
+    fun matches(conv: ConversationSummary, query: String): Boolean {
+        if (query.isEmpty()) return true
+        return (conv.trimmedTitle?.contains(query, ignoreCase = true) == true) ||
+            (conv.model?.contains(query, ignoreCase = true) == true) ||
+            conv.agentType.displayName.contains(query, ignoreCase = true) ||
+            conv.agentType.shortName.contains(query, ignoreCase = true) ||
+            conv.agentType.wire.contains(query, ignoreCase = true) ||
+            (conv.gitBranch?.contains(query, ignoreCase = true) == true)
     }
 }

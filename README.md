@@ -20,6 +20,15 @@ development:
 - project browsing, file changes, commit history, branch selection, repository
   cloning, and Git commit/push/pull/fetch flows;
 - activity and search screens;
+- native task management with server-backed task creation, execution, status,
+  conversation navigation, retries, scheduling, review/merge actions,
+  timelines, diffs, changed files, task settings, and templates;
+- native Automations with schedules, manual runs, run history, cancellation,
+  enable/disable controls, and conversation navigation;
+- native Token Usage dashboards with sync, time buckets, facets, trends, and
+  high-usage session navigation;
+- native PTY Terminal with spawn, live output, input, resize/kill protocol
+  support, and terminal lifecycle events;
 - settings for agents, model providers, MCP servers, skills, experts, quick
   messages, chat channels, version control, language, and system options;
 - English and Simplified Chinese resources, deep links, and adaptive navigation
@@ -106,8 +115,10 @@ feature/         conversations, projects, activity, search, servers, settings
 
 Requests generally use camelCase, while server responses may use snake_case.
 Most operations are `POST /api/<name>` calls. The event stream supports snapshot,
-replay, and live event frames, and unknown event types are preserved rather than
-terminating the stream.
+replay, live event frames, and terminal side-channel output. Unknown event types
+are preserved or dropped safely rather than terminating the stream. The mobile
+client is implemented with native Jetpack Compose screens and does not embed a
+WebView for the web workbench.
 
 ## License and third-party material
 

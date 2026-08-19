@@ -7,13 +7,24 @@ import org.junit.Test
 /** Locks down the worktree-aware branch-switch routing ported from iOS `FolderVisibility`. */
 class FolderVisibilityTest {
 
-    private fun folder(id: Int, name: String = "f$id", parentId: Int? = null) =
-        FolderDetail(id = id, name = name, path = "/p/$id", parentId = parentId)
+    private fun folder(id: Int, name: String = "f$id", parentId: Int? = null, isChat: Boolean = false) =
+        FolderDetail(id = id, name = name, path = "/p/$id", parentId = parentId, isChat = isChat)
 
     @Test
     fun `filterTopLevel keeps only parentless folders`() {
         val all = listOf(folder(1), folder(2, parentId = 1), folder(3))
         assertEquals(listOf(1, 3), FolderVisibility.filterTopLevel(all).map { it.id })
+    }
+
+    @Test
+    fun `filterProjectFolders excludes chats and worktrees`() {
+        val all = listOf(
+            folder(1, parentId = null, isChat = false),
+            folder(2, parentId = 1, isChat = false),
+            folder(3, parentId = null, isChat = true),
+        )
+
+        assertEquals(listOf(1), FolderVisibility.filterProjectFolders(all).map { it.id })
     }
 
     @Test
@@ -46,6 +57,14 @@ class FolderVisibilityTest {
     fun `displayName uses own name for a top-level folder`() {
         val root = folder(1, name = "repo")
         assertEquals("repo", FolderVisibility.displayName(root, listOf(root)))
+    }
+
+    @Test
+    fun `breadcrumb uses workspace slash branch for a worktree`() {
+        val root = folder(1, name = "repo")
+        val wt = FolderDetail(id = 2, name = "repo-feat", path = "/p/2", parentId = 1, gitBranch = "feat")
+        assertEquals("repo / feat", FolderVisibility.breadcrumb(wt, listOf(root, wt)))
+        assertEquals("repo", FolderVisibility.breadcrumb(root, listOf(root, wt)))
     }
 
     @Test

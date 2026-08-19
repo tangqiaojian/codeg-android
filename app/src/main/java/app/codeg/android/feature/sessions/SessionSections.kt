@@ -2,6 +2,7 @@ package app.codeg.android.feature.sessions
 
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.FolderVisibility
 
 /**
  * One rendered group in the Chats list, fully sorted and filtered.
@@ -18,8 +19,12 @@ data class SessionSection(
     val id: String,
     val kind: SectionKind,
     val rows: List<SessionRowItem>,
+    /** Worktree (or other child-folder) groups nested under a workspace. */
+    val nested: List<SessionSection> = emptyList(),
+    val depth: Int = 0,
+    val breadcrumb: String? = null,
 ) {
-    val count: Int get() = rows.size
+    val count: Int get() = rows.size + nested.sumOf { it.count }
 }
 
 /** What a [SessionSection] represents — drives its header icon, label, and tint. */
@@ -27,8 +32,21 @@ sealed interface SectionKind {
     /** Pinned conversations across all folders. */
     data object Pinned : SectionKind
 
-    /** One folder's non-pinned conversations. [colorHex] is the folder's server color. */
-    data class Folder(val name: String, val colorHex: String) : SectionKind
+    /**
+     * One folder's non-pinned conversations. Workspace (top-level) folders use
+     * [depth] 0; worktrees nest under their parent with [depth] 1 and a
+     * [workspaceName] breadcrumb.
+     */
+    data class Folder(
+        val name: String,
+        val colorHex: String,
+        val folderId: Int = 0,
+        val workspaceName: String? = null,
+        val isWorktree: Boolean = false,
+        val gitBranch: String? = null,
+        val path: String = "",
+        val depth: Int = 0,
+    ) : SectionKind
 
     /** Non-pinned conversations whose folder isn't in the folder list (orphans). */
     data object Other : SectionKind
@@ -40,6 +58,8 @@ data class SessionRowItem(
     /** Dim folder tag shown on cross-folder rows (Pinned/Other); `null` inside a
      * folder group, where the folder is already the header. */
     val folderName: String?,
+    val depth: Int = 0,
+    val children: List<SessionRowItem> = emptyList(),
 )
 
 /**
@@ -55,35 +75,128 @@ data class SessionRowItem(
 fun buildSessionSections(
     folders: List<FolderDetail>,
     conversations: List<ConversationSummary>,
+    search: String = "",
 ): List<SessionSection> {
+    val query = search.trim()
+    val searching = query.isNotEmpty()
+    val visible = if (searching) SessionGrouping.matchingWithParents(conversations, query) else conversations
     val folderNames = SessionGrouping.folderNames(folders)
+    val knownIds = visible.map { it.id }.toSet()
+    val childrenByParent = visible
+        .filter { it.parentId != null && it.parentId in knownIds }
+        .groupBy { it.parentId!! }
+    val topLevel = visible.filter { it.parentId == null || it.parentId !in knownIds }
     val out = ArrayList<SessionSection>()
 
-    val pinned = SessionGrouping.pinned(conversations)
+    val pinned = SessionGrouping.pinned(topLevel)
     if (pinned.isNotEmpty()) {
         out += SessionSection(
             id = "pinned",
             kind = SectionKind.Pinned,
-            rows = pinned.map { SessionRowItem(it, folderNames[it.folderId]) },
+            rows = pinned.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
         )
     }
 
-    for (group in SessionGrouping.folderGroups(folders, conversations)) {
-        out += SessionSection(
-            id = "folder-${group.folder.id}",
-            kind = SectionKind.Folder(group.folder.name, group.folder.color),
-            rows = group.conversations.map { SessionRowItem(it, folderName = null) },
+    val unpinned = topLevel.filter { !it.isPinned }
+    val unpinnedByFolder = unpinned.groupBy { it.folderId }
+    val worktreesByParent = folders.filter { it.parentId != null }.groupBy { it.parentId!! }
+    val knownFolderIds = folders.map { it.id }.toSet()
+
+    for (folder in SessionGrouping.sortedFolders(folders.filter { it.parentId == null })) {
+        val section = folderSection(
+            folder = folder,
+            folders = folders,
+            unpinnedByFolder = unpinnedByFolder,
+            worktreesByParent = worktreesByParent,
+            childrenByParent = childrenByParent,
+            depth = 0,
+            searching = searching,
         )
+        if (section != null) out += section
     }
 
-    val other = SessionGrouping.ungrouped(folders, conversations)
+    val orphanWorktrees = folders.filter { it.parentId != null && it.parentId !in knownFolderIds }
+    for (folder in SessionGrouping.sortedFolders(orphanWorktrees)) {
+        val section = folderSection(
+            folder = folder,
+            folders = folders,
+            unpinnedByFolder = unpinnedByFolder,
+            worktreesByParent = worktreesByParent,
+            childrenByParent = childrenByParent,
+            depth = 0,
+            searching = searching,
+        )
+        if (section != null) out += section
+    }
+
+    val other = SessionGrouping.ungrouped(folders, unpinned)
     if (other.isNotEmpty()) {
         out += SessionSection(
             id = "other",
             kind = SectionKind.Other,
-            rows = other.map { SessionRowItem(it, folderNames[it.folderId]) },
+            rows = other.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
         )
     }
 
     return out
+}
+
+private fun folderSection(
+    folder: FolderDetail,
+    folders: List<FolderDetail>,
+    unpinnedByFolder: Map<Int, List<ConversationSummary>>,
+    worktreesByParent: Map<Int, List<FolderDetail>>,
+    childrenByParent: Map<Int, List<ConversationSummary>>,
+    depth: Int,
+    searching: Boolean,
+): SessionSection? {
+    val convs = (unpinnedByFolder[folder.id] ?: emptyList()).sortedByDescending { it.updatedAt }
+    val isWorktree = FolderVisibility.isWorktree(folder)
+    val workspaceName = if (isWorktree) FolderVisibility.displayName(folder, folders) else null
+    val nested = SessionGrouping.sortedFolders(worktreesByParent[folder.id] ?: emptyList()).mapNotNull { child ->
+        folderSection(
+            folder = child,
+            folders = folders,
+            unpinnedByFolder = unpinnedByFolder,
+            worktreesByParent = worktreesByParent,
+            childrenByParent = childrenByParent,
+            depth = depth + 1,
+            searching = searching,
+        )
+    }
+    if (searching && convs.isEmpty() && nested.isEmpty()) return null
+    return SessionSection(
+        id = "folder-${folder.id}",
+        kind = SectionKind.Folder(
+            name = folder.name,
+            colorHex = folder.color,
+            folderId = folder.id,
+            workspaceName = workspaceName,
+            isWorktree = isWorktree,
+            gitBranch = folder.gitBranch,
+            path = folder.path,
+            depth = depth,
+        ),
+        rows = convs.map { attachChildren(it, childrenByParent, folderName = null, depth = depth) },
+        nested = nested,
+        depth = depth,
+        breadcrumb = if (isWorktree) FolderVisibility.breadcrumb(folder, folders) else folder.name,
+    )
+}
+
+private fun attachChildren(
+    conversation: ConversationSummary,
+    childrenByParent: Map<Int, List<ConversationSummary>>,
+    folderName: String?,
+    depth: Int,
+): SessionRowItem {
+    val children = (childrenByParent[conversation.id] ?: emptyList())
+        .sortedByDescending { it.createdAt }
+        .map { child -> attachChildren(child, childrenByParent, folderName = null, depth = depth + 1) }
+    return SessionRowItem(
+        conversation = conversation,
+        folderName = folderName,
+        depth = depth,
+        children = children,
+    )
 }

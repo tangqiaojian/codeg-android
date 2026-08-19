@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Codeg</string>
+    <string name="app_name">Codeg WebParity</string>
 
     <!-- Onboarding -->
     <string name="onboarding_title">Codeg</string>
@@ -65,6 +65,219 @@
     <string name="session_agent_options">智能体选项</string>
     <string name="sessions_collapse">收起</string>
     <string name="sessions_expand">展开</string>
+    <string name="sessions_workspace">工作区</string>
+    <string name="sessions_worktree">工作树</string>
+    <string name="session_status_running">运行中</string>
+    <string name="session_status_review">待审核</string>
+    <string name="session_status_done">已完成</string>
+    <string name="session_status_cancelled">已取消</string>
+    <string name="session_status_other">—</string>
+    <string name="session_role_you">我</string>
+    <string name="session_role_assistant">助手 · %1$s</string>
+    <string name="session_changes_title">改动文件</string>
+    <string name="session_changes_file_count">%1$d 个文件</string>
+    <string name="sessions_search_placeholder">筛选会话</string>
+    <string name="session_find">在会话中查找</string>
+    <string name="session_find_placeholder">查找消息</string>
+    <string name="session_find_previous">上一个匹配</string>
+    <string name="session_find_next">下一个匹配</string>
+    <string name="session_failure_category_connection">连接异常</string>
+    <string name="session_failure_category_access">访问受限</string>
+    <string name="session_failure_category_limit">已达限制</string>
+    <string name="session_failure_category_request">请求被拒绝</string>
+    <string name="session_failure_category_service">服务异常</string>
+    <string name="session_failure_category_unknown">会话异常</string>
+    <string name="session_failure_action_retry">重试</string>
+    <string name="session_failure_action_login">去登录</string>
+    <string name="session_failure_action_new_session">新建会话</string>
+    <string name="session_failure_recovered">已恢复</string>
+    <string name="session_failure_more">另 %1$d 条</string>
+    <string name="session_failure_retry_unavailable">没有可重发的消息。</string>
+    <string name="live_status_connecting">连接中…</string>
+    <string name="live_status_thinking">思考中…</string>
+    <string name="live_status_reattaching">正在重新连接会话…</string>
+    <string name="live_status_retrying">重试中…</string>
+    <string name="live_status_reconnecting">重新连接中…</string>
+    <string name="live_status_tool">工具</string>
+    <string name="live_status_running_tool">正在运行 %1$s…</string>
+    <string name="delegation_unknown_agent">未知智能体</string>
+    <string name="delegation_status_starting">启动中</string>
+    <string name="delegation_status_running">运行中</string>
+    <string name="delegation_status_waiting">等待中</string>
+    <string name="delegation_status_ok">已完成</string>
+    <string name="delegation_status_err">失败</string>
+    <string name="delegation_open_session">查看会话</string>
+    <string name="delegation_open_task">查看任务</string>
+
+    <!-- 待办 -->
+    <string name="todos_title">待办</string>
+    <string name="todos_add">新建待办</string>
+    <string name="todos_empty_title">还没有待办</string>
+    <string name="todos_empty_message">创建待办，稍后启动智能体任务。</string>
+    <string name="todos_new_title">新建待办</string>
+    <string name="todos_title_field">标题</string>
+    <string name="todos_prompt_field">提示词</string>
+    <string name="todos_folder_field">文件夹</string>
+    <string name="todos_agent_field">智能体</string>
+    <string name="todos_inherit_agent">使用文件夹默认值</string>
+    <string name="todos_create">创建待办</string>
+    <string name="todos_detail">待办详情</string>
+    <string name="todos_start">启动任务</string>
+    <string name="todos_open_conversation">打开会话</string>
+    <string name="todos_refresh">刷新任务</string>
+    <string name="todos_status_todo">待办</string>
+    <string name="todos_status_queued">排队中</string>
+    <string name="todos_status_preparing">准备中</string>
+    <string name="todos_status_running">运行中</string>
+    <string name="todos_status_awaiting_input">等待输入</string>
+    <string name="todos_status_review">待审核</string>
+    <string name="todos_status_merging">合并中</string>
+    <string name="todos_status_done">已完成</string>
+    <string name="todos_status_failed">失败</string>
+    <string name="todos_status_canceled">已取消</string>
+    <string name="todos_status_unknown">未知</string>
+    <string name="todos_prompt_empty">没有记录提示词。</string>
+    <string name="todos_retry">重试任务</string>
+    <string name="todos_requeue">重新排队</string>
+    <string name="todos_schedule">安排任务</string>
+    <string name="todos_return">退回修改</string>
+    <string name="todos_cancel">取消任务</string>
+    <string name="todos_merge">合并任务</string>
+    <string name="todos_complete">完成任务</string>
+    <string name="todos_archive">归档任务</string>
+    <string name="todos_unarchive">取消归档</string>
+    <string name="todos_cleanup">清理工作树</string>
+    <string name="todos_unqueue_merge">取消排队中的合并</string>
+    <string name="todos_delete">删除任务</string>
+    <string name="todos_tools">任务工具</string>
+    <string name="todos_settings">任务设置</string>
+    <string name="todos_auto_process">自动处理排队任务</string>
+    <string name="todos_auto_merge">自动合并待审核任务</string>
+    <string name="todos_delete_worktree_default">完成后删除工作树</string>
+    <string name="todos_max_concurrent">最大并发任务数（0 = 不限制）</string>
+    <string name="todos_worktree_root">工作树根目录（可选）</string>
+    <string name="todos_preflight">预检命令（可选）</string>
+    <string name="todos_init_command">工作树初始化命令（可选）</string>
+    <string name="todos_save_settings">保存设置</string>
+    <string name="todos_reset_settings">重置文件夹设置</string>
+    <string name="todos_templates">任务模板</string>
+    <string name="todos_template_new">新建模板</string>
+    <string name="todos_template_name">模板名称</string>
+    <string name="todos_template_save">保存模板</string>
+    <string name="todos_template_delete">删除模板</string>
+    <string name="todos_templates_empty">还没有模板。</string>
+    <string name="todos_timeline">任务时间线</string>
+    <string name="todos_changed_files">变更文件</string>
+    <string name="todos_diff">查看 Diff</string>
+    <string name="todos_diff_empty">没有检测到变更。</string>
+    <string name="todos_note_optional">备注（可选）</string>
+    <string name="todos_schedule_hint">ISO 时间，例如 2026-08-20T09:00:00Z</string>
+    <string name="todos_feedback">修改反馈</string>
+    <string name="todos_merge_message">提交信息（可选）</string>
+    <string name="todos_cancel_reason">原因（可选）</string>
+
+    <!-- 自动化 -->
+    <string name="automations_title">自动化</string>
+    <string name="automations_detail">自动化</string>
+    <string name="automations_new">新建自动化</string>
+    <string name="automations_create">创建自动化</string>
+    <string name="automations_refresh">刷新自动化</string>
+    <string name="automations_empty_title">还没有自动化</string>
+    <string name="automations_empty_message">创建一个可按计划或手动运行的复用任务。</string>
+    <string name="automations_trigger_schedule">定时</string>
+    <string name="automations_trigger_manual">手动</string>
+    <string name="automations_status_running">运行中</string>
+    <string name="automations_status_succeeded">已成功</string>
+    <string name="automations_status_failed">失败</string>
+    <string name="automations_status_cancelled">已取消</string>
+    <string name="automations_status_skipped">已跳过</string>
+    <string name="automations_status_never">尚未运行</string>
+    <string name="automations_status_unknown">未知</string>
+    <string name="automations_action_launch_session">启动会话</string>
+    <string name="automations_action_enqueue_task">加入任务队列</string>
+    <string name="automations_isolation">隔离方式</string>
+    <string name="automations_isolation_worktree">每次运行新建工作树</string>
+    <string name="automations_isolation_shared">共享项目根目录</string>
+    <string name="automations_isolation_worktree_short">工作树</string>
+    <string name="automations_isolation_shared_short">共享根目录</string>
+    <string name="automations_cron_hourly">每小时</string>
+    <string name="automations_cron_daily">每天 09:00</string>
+    <string name="automations_cron_weekdays">工作日 09:00</string>
+    <string name="automations_cron_custom">自定义</string>
+    <string name="automations_field_name">名称</string>
+    <string name="automations_field_prompt">提示词</string>
+    <string name="automations_field_folder">文件夹</string>
+    <string name="automations_field_agent">智能体</string>
+    <string name="automations_field_cadence">频率</string>
+    <string name="automations_field_cron">Cron（5 段）</string>
+    <string name="automations_field_branch">分支（可选）</string>
+    <string name="automations_when_it_fires">触发时机</string>
+    <string name="automations_what_it_does">执行内容</string>
+    <string name="automations_timezone">时区 · %1$s</string>
+    <string name="automations_next_run_absolute">下次运行 · %1$s</string>
+    <string name="automations_next_run_relative">下次 %1$s</string>
+    <string name="automations_now">现在</string>
+    <string name="automations_duration_minutes">%1$d 分钟</string>
+    <string name="automations_duration_hours">%1$d 小时</string>
+    <string name="automations_duration_days">%1$d 天</string>
+    <string name="automations_enabled">已启用</string>
+    <string name="automations_disabled">已停用</string>
+    <string name="automations_prompt_empty">没有记录提示词。</string>
+    <string name="automations_meta_trigger">触发方式</string>
+    <string name="automations_meta_cron">Cron</string>
+    <string name="automations_meta_timezone">时区</string>
+    <string name="automations_meta_next_run">下次运行</string>
+    <string name="automations_meta_action">动作</string>
+    <string name="automations_run_now">立即运行</string>
+    <string name="automations_run_history">运行记录</string>
+    <string name="automations_runs_empty">还没有运行记录。</string>
+    <string name="automations_cancel_run">取消运行</string>
+    <string name="automations_open_conversation">打开会话</string>
+    <string name="automations_delete_title">删除自动化</string>
+    <string name="automations_delete_message">将删除计划及其运行历史。进行中的运行会被取消。</string>
+    <string name="automations_error_name">请填写名称</string>
+    <string name="automations_error_prompt">请填写提示词</string>
+    <string name="automations_error_folder">请选择目标文件夹</string>
+    <string name="automations_error_cron">定时自动化需要填写 Cron</string>
+    <string name="automations_error_no_server">尚未选择服务器</string>
+
+    <!-- Token Usage -->
+    <string name="token_usage_title">Token 用量</string>
+    <string name="token_usage_sync">同步用量</string>
+    <string name="token_usage_refresh">刷新用量</string>
+    <string name="token_usage_empty_title">暂无用量数据</string>
+    <string name="token_usage_empty_message">同步智能体记录后即可生成用量仪表盘。</string>
+    <string name="token_usage_day">日</string>
+    <string name="token_usage_week">周</string>
+    <string name="token_usage_month">月</string>
+    <string name="token_usage_total">Token 总量</string>
+    <string name="token_usage_input">输入</string>
+    <string name="token_usage_output">输出</string>
+    <string name="token_usage_turns">轮次</string>
+    <string name="token_usage_days">活跃天数</string>
+    <string name="token_usage_trend">用量趋势</string>
+    <string name="token_usage_series_points">%1$d 个数据点</string>
+    <string name="token_usage_by_agent">按智能体</string>
+    <string name="token_usage_by_folder">按文件夹</string>
+    <string name="token_usage_by_model">按模型</string>
+    <string name="token_usage_streak">活跃连续记录</string>
+    <string name="token_usage_streak_value">当前 %1$d 天 · 最长 %2$d 天</string>
+    <string name="token_usage_top_sessions">高用量会话</string>
+    <string name="token_usage_truncated">报告已限制为最近记录。</string>
+
+    <!-- Terminal -->
+    <string name="terminal_title">终端</string>
+    <string name="terminal_new">新建终端</string>
+    <string name="terminal_empty_title">暂无终端</string>
+    <string name="terminal_empty_message">打开一个连接到当前 Codeg 服务器的 PTY 终端。</string>
+    <string name="terminal_refresh">刷新终端</string>
+    <string name="terminal_kill">关闭终端</string>
+    <string name="terminal_clear">清空输出</string>
+    <string name="terminal_input">输入</string>
+    <string name="terminal_send">发送输入</string>
+    <string name="terminal_working_dir">工作目录</string>
+    <string name="terminal_initial_command">初始命令（可选）</string>
+    <string name="terminal_spawn">打开终端</string>
 
     <!-- Projects / Folders -->
     <string name="projects_add">添加</string>
@@ -94,6 +307,8 @@
     <string name="search_no_results">没有结果</string>
     <string name="search_no_results_for">没有匹配 \"%1$s\" 的结果。</string>
     <string name="search_failed">搜索失败</string>
+    <string name="search_filter_all">全部</string>
+    <string name="search_no_results_agent">没有匹配该智能体的会话。</string>
 
     <!-- Common -->
     <string name="common_retry">重试</string>
@@ -602,10 +817,15 @@
 
     <!-- ===== Session Detail · Composer ===== -->
     <string name="compose_insert">插入</string>
+    <string name="compose_agent_mention">提及智能体</string>
+    <string name="compose_agent_mention_empty">没有可用的智能体</string>
     <string name="compose_attach_image">添加图片</string>
     <string name="compose_message_placeholder">输入消息</string>
     <string name="compose_stop">停止</string>
     <string name="compose_send">发送</string>
+    <string name="compose_queue">排队发送</string>
+    <string name="compose_queue_title">排队中 · %1$d</string>
+    <string name="compose_queue_remove">移除排队消息</string>
 
     <!-- ===== Session Detail · Ask / Permission / Tool / Plan / Timeline ===== -->
     <string name="ask_needs_input_title">智能体需要你的输入</string>
@@ -710,6 +930,7 @@
     <string name="sessions_missing_token">此服务器缺少令牌</string>
     <string name="live_cancelled">已取消。</string>
     <string name="live_agent_connection_errored">智能体连接出错。</string>
+    <string name="session_attachment_summary">已添加 %1$d 张图片，跳过 %2$d 张（过大或超过限制）。</string>
     <string name="files_truncated_note">…文件已截断至 %1$d 行</string>
 
     <!-- ===== Tool group summary (timeline, pluralized) ===== -->

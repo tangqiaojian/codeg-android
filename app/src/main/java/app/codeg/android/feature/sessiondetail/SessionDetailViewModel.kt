@@ -10,6 +10,7 @@ import app.codeg.android.core.datastore.SelectorPrefs
 import app.codeg.android.core.datastore.SelectorPrefsStore
 import app.codeg.android.core.datastore.ServerProfile
 import app.codeg.android.core.model.AcpEvent
+import app.codeg.android.core.model.AcpAgentInfo
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.AvailableCommandInfo
 import app.codeg.android.core.model.ConnectionStatus
@@ -26,14 +27,21 @@ import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.core.model.FolderVisibility
 import app.codeg.android.core.model.GitBranchList
+import app.codeg.android.core.model.GitStatusEntry
 import app.codeg.android.core.model.MessageTurn
 import app.codeg.android.core.model.PromptInputBlock
+import app.codeg.android.core.model.SessionFailureAction
+import app.codeg.android.core.model.SessionFailureRecord
+import app.codeg.android.core.model.SessionFailureSettleScope
+import app.codeg.android.core.model.SessionFailures
 import app.codeg.android.core.model.SessionConfigKind
 import app.codeg.android.core.model.SessionConfigOption
 import app.codeg.android.core.model.SessionModeState
 import app.codeg.android.core.model.SessionSnapshot
 import app.codeg.android.core.model.SessionStats
 import app.codeg.android.core.model.TurnRole
+import app.codeg.android.core.model.WorkTask
+import app.codeg.android.core.model.WorkTaskChangedFile
 import app.codeg.android.core.network.ApiError
 import app.codeg.android.core.network.CodegClient
 import app.codeg.android.core.network.EventStream
@@ -74,11 +82,6 @@ private const val MODE_KEY = "mode"
 /** Bounded snapshot poll after an options apply (~2.3s total) — `set_*` only enqueues
  *  the change server-side, so we reconcile against the authoritative snapshot. */
 private const val RECONCILE_ATTEMPTS = 6
-
-/** Status-line copy shown while the agent is thinking (no tool running). Hardcoded to
- *  match the send-flow literal — the transient status micro-copy is intentionally not
- *  localized (see the app's i18n notes). */
-private const val STATUS_THINKING = "Thinking…"
 
 /**
  * Drives the session detail screen end to end: loads the persisted transcript,
@@ -159,6 +162,10 @@ class SessionDetailViewModel @Inject constructor(
                 client = c
 
                 allFolders = runCatching { c.listFolders() }.getOrDefault(emptyList())
+                val mentionAgents = runCatching { c.acpListAgents() }
+                    .getOrDefault(emptyList())
+                    .filter { it.available && it.enabled }
+                    .sortedBy { it.sortOrder }
 
                 val id = conversationId
                 if (id != null) {
@@ -175,13 +182,16 @@ class SessionDetailViewModel @Inject constructor(
                             sessionStats = detail.sessionStats,
                             agent = detail.summary.agentType,
                             folderName = folder?.let { f -> FolderVisibility.displayName(f, allFolders) },
+                            folderBreadcrumb = folder?.let { f -> FolderVisibility.breadcrumb(f, allFolders) },
                             folderPath = folder?.path,
                             selectedFolderId = folder?.id,
                             currentBranch = currentBranch,
                             isDraftEditable = false,
+                            availableMentionAgents = mentionAgents,
                             error = null,
                         )
                     }
+                    loadRelatedWork(c, id, folder)
                     // Reattach when the server reports the turn live — via an explicit
                     // in-flight user turn id or the conversation status (iOS parity).
                     if (detail.inFlightUserTurnId != null || detail.summary.status.isLive) reattachIfLive()
@@ -192,8 +202,7 @@ class SessionDetailViewModel @Inject constructor(
                     val open = runCatching { c.listOpenFolders() }.getOrDefault(emptyList())
                     val topLevel = FolderVisibility.filterTopLevel(open)
                         .sortedByDescending { it.lastOpenedAt ?: Instant.MIN }
-                    val agents = runCatching { c.acpListAgents() }.getOrDefault(emptyList())
-                        .filter { it.available && it.enabled }
+                    val agents = mentionAgents
                         .sortedBy { it.sortOrder }
                         .map { it.agentType }
                         .distinct()
@@ -209,12 +218,14 @@ class SessionDetailViewModel @Inject constructor(
                             loading = false,
                             agent = agent,
                             folderName = folder?.let { f -> FolderVisibility.displayName(f, allFolders) },
+                            folderBreadcrumb = folder?.let { f -> FolderVisibility.breadcrumb(f, allFolders) },
                             folderPath = folder?.path,
                             selectedFolderId = folder?.id,
                             currentBranch = currentBranch,
                             isDraftEditable = true,
                             availableFolders = topLevel,
                             availableAgents = agents,
+                            availableMentionAgents = mentionAgents,
                         )
                     }
                 }
@@ -240,7 +251,13 @@ class SessionDetailViewModel @Inject constructor(
     private fun send(text: String, withAttachments: Boolean) {
         val trimmed = text.trim()
         val attachments = if (withAttachments) _ui.value.attachments else emptyList()
-        if ((trimmed.isEmpty() && attachments.isEmpty()) || _ui.value.isInFlight) return
+        if (trimmed.isEmpty() && attachments.isEmpty()) return
+        if (_ui.value.isInFlight) {
+            if (trimmed.isEmpty()) return
+            _ui.update { it.copy(queuedPrompts = PromptQueue.enqueue(it.queuedPrompts, trimmed)) }
+            return
+        }
+        applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.ALL) }
 
         // Supersede any post-turn reconcile still running for the previous turn so it can't
         // wipe the turn we're about to start (its identity guard is the backstop).
@@ -274,7 +291,7 @@ class SessionDetailViewModel @Inject constructor(
                 live = builder.snapshot(),
                 liveFromReattach = false,
                 isInFlight = true,
-                sendStatus = "Connecting…",
+                sendStatus = appContext.getString(R.string.live_status_connecting),
                 notice = null,
                 restoreDraft = null,
                 attachments = if (withAttachments) emptyList() else it.attachments,
@@ -313,11 +330,19 @@ class SessionDetailViewModel @Inject constructor(
                     attemptSend(c, text, attachments, clientMessageId, freshConnection = true)
                 } else throw e
             }
-            _ui.update { if (it.isInFlight) it.copy(sendStatus = "Thinking…") else it }
+            _ui.update {
+                if (it.isInFlight) it.copy(sendStatus = appContext.getString(R.string.live_status_thinking)) else it
+            }
         } catch (e: CancellationException) {
             throw e
         } catch (e: ApiError.TurnInProgress) {
-            discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = "A turn is already running on this session.")
+            discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = null)
+            _ui.update {
+                it.copy(
+                    queuedPrompts = PromptQueue.requeueFront(it.queuedPrompts, text),
+                    restoreDraft = null,
+                )
+            }
         } catch (e: Exception) {
             discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = e.displayMessage())
         }
@@ -426,6 +451,7 @@ class SessionDetailViewModel @Inject constructor(
             s.frames().collect { frame ->
                 if (gen != streamGeneration) return@collect
                 when (frame) {
+                    is StreamFrame.Global -> Unit
                     StreamFrame.Ready -> s.attach(subscriptionId, conn, lastSeq.takeIf { it > 0 })
                     is StreamFrame.Snapshot -> {
                         streamReconnects = 0
@@ -439,6 +465,7 @@ class SessionDetailViewModel @Inject constructor(
                         // Only adopt a snapshot's pending permission/question on a reattach or a
                         // mid-turn reconnect — the initial send handshake snapshot is pre-prompt
                         // state and could surface a stale card (iOS skips it there).
+                        restoreSessionFailures(frame.snapshot)
                         if (seedOnAttach || !awaitAttach) restorePending(frame.snapshot)
                         if (!attached.isCompleted) attached.complete(Unit)
                     }
@@ -525,7 +552,13 @@ class SessionDetailViewModel @Inject constructor(
             val builder = LiveTurnBuilder()
             liveBuilder = builder
             turnBaseline = _ui.value.turns.size
-            _ui.update { it.copy(isInFlight = true, sendStatus = "Reattaching…", live = builder.snapshot()) }
+            _ui.update {
+                it.copy(
+                    isInFlight = true,
+                    sendStatus = appContext.getString(R.string.live_status_reattaching),
+                    live = builder.snapshot(),
+                )
+            }
             try {
                 openStream(found.connectionId, seedOnAttach = true)
             } catch (e: StreamAttachFailed) {
@@ -540,11 +573,20 @@ class SessionDetailViewModel @Inject constructor(
         if (seq > 0) lastSeq = seq
         val builder = liveBuilder
         when (event) {
-            is AcpEvent.ContentDelta -> { builder?.appendText(event.text); scheduleLiveEmit() }
-            is AcpEvent.Thinking -> { builder?.appendThinking(event.text); scheduleLiveEmit() }
+            is AcpEvent.ContentDelta -> {
+                builder?.appendText(event.text)
+                settleRetryIncidentsIfNeeded()
+                scheduleLiveEmit()
+            }
+            is AcpEvent.Thinking -> {
+                builder?.appendThinking(event.text)
+                settleRetryIncidentsIfNeeded()
+                scheduleLiveEmit()
+            }
             is AcpEvent.ToolCall -> {
                 builder?.upsertToolCall(event.id, event.title, event.kind, event.status, event.rawInput, event.rawOutput, event.content, event.meta)
                 _ui.update { if (it.isInFlight) it.copy(sendStatus = runningStatus()) else it }
+                settleRetryIncidentsIfNeeded()
                 scheduleLiveEmit()
             }
             is AcpEvent.ToolCallUpdate -> {
@@ -569,7 +611,9 @@ class SessionDetailViewModel @Inject constructor(
                 ConnectionStatus.PROMPTING -> _ui.update {
                     // The agent is actively prompting — reflect it as "Thinking…" unless a tool is
                     // currently running (that status is more specific). Mirrors the iOS .prompting.
-                    if (it.isInFlight && liveBuilder?.activeToolTitle() == null) it.copy(sendStatus = STATUS_THINKING) else it
+                    if (it.isInFlight && liveBuilder?.activeToolTitle() == null) {
+                        it.copy(sendStatus = appContext.getString(R.string.live_status_thinking))
+                    } else it
                 }
                 // .connecting is a no-op here: the status line only renders while in-flight, and
                 // by then we're already past connecting (iOS shows it only from its idle state).
@@ -597,6 +641,36 @@ class SessionDetailViewModel @Inject constructor(
             }
             is AcpEvent.PlanApprovalResolved -> _ui.update {
                 if (it.pendingPlanApproval?.approvalId == event.approvalId) it.copy(pendingPlanApproval = null) else it
+            }
+            is AcpEvent.SessionFailure -> applySessionFailures { SessionFailures.upsert(it, event.record) }
+            is AcpEvent.TurnRetrying -> {
+                val nextRevision = (_ui.value.sessionFailures.firstOrNull { it.id == "turn_retrying" }?.revision ?: 0) + 1
+                applySessionFailures {
+                    SessionFailures.upsert(it, SessionFailures.syntheticRetryWarning(event.message, nextRevision))
+                }
+                if (_ui.value.isInFlight) {
+                    _ui.update {
+                        it.copy(
+                            sendStatus = event.message.ifBlank {
+                                appContext.getString(R.string.live_status_retrying)
+                            },
+                        )
+                    }
+                }
+            }
+            is AcpEvent.SessionLoadFailed -> applySessionFailures {
+                SessionFailures.upsert(
+                    it,
+                    SessionFailureRecord(
+                        id = "session_load_failed",
+                        revision = 1,
+                        category = "access",
+                        severity = "error",
+                        title = event.message.ifBlank { appContext.getString(R.string.session_load_failed) },
+                        details = event.code.takeIf { code -> code.isNotBlank() },
+                        actions = listOf("retry", "new_session"),
+                    ),
+                )
             }
             else -> Unit // session_started / user_message / etc. are informational
         }
@@ -627,11 +701,15 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     /** The status-line copy for the current live state: the running tool's title, else
-     *  "Thinking…". Recomputed on tool start/finish so it never sticks on a done tool.
-     *  Hardcoded English to match the send-flow literals (transient status micro-copy is
-     *  intentionally not localized — see the app's i18n notes). */
+     *  the localized thinking label. Recomputed on tool start/finish so it never sticks
+     *  on a done tool. */
     private fun runningStatus(): String =
-        liveBuilder?.activeToolTitle()?.let { "Running ${it.ifBlank { "tool" }}…" } ?: STATUS_THINKING
+        liveBuilder?.activeToolTitle()?.let {
+            appContext.getString(
+                R.string.live_status_running_tool,
+                it.ifBlank { appContext.getString(R.string.live_status_tool) },
+            )
+        } ?: appContext.getString(R.string.live_status_thinking)
 
     /** A new task's first prompt links a server-side conversation. Android creates that
      *  row up front (so [conversationId] is already set), but has no summary for it yet —
@@ -814,7 +892,9 @@ class SessionDetailViewModel @Inject constructor(
         // prompt Grok expects (it discards them on the reply itself). `send` supersedes
         // the reconcile it just started and folds the finished reply in locally, exactly
         // as a user typing the instant a turn ends would.
+        applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.WARNINGS) }
         if (planFollowUp != null) send(planFollowUp, withAttachments = false)
+        else flushQueuedPrompt()
     }
 
     private fun failLive(message: String) {
@@ -868,7 +948,11 @@ class SessionDetailViewModel @Inject constructor(
         reconnectJob?.cancel()
         reconnectJob = viewModelScope.launch {
             val backoffMs = (500L shl (streamReconnects - 1)).coerceAtMost(8_000L)
-            _ui.update { if (it.isInFlight) it.copy(sendStatus = "Reconnecting…") else it }
+            _ui.update {
+                if (it.isInFlight) {
+                    it.copy(sendStatus = appContext.getString(R.string.live_status_reconnecting))
+                } else it
+            }
             delay(backoffMs)
             // Bail if the turn ended or was superseded (cancel / finalize) while we waited.
             if (gen != streamGeneration || !_ui.value.isInFlight) return@launch
@@ -921,11 +1005,16 @@ class SessionDetailViewModel @Inject constructor(
                         )
                     }
                     liveBuilder = null
+                    applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.WARNINGS) }
+                    flushQueuedPrompt()
                     return@launch
                 }
             }
             // Couldn't confirm — fold the streamed reply in locally so nothing is lost.
-            if (liveBuilder === builder) promoteUnreconciled()
+            if (liveBuilder === builder) {
+                promoteUnreconciled()
+                flushQueuedPrompt()
+            }
         }
     }
 
@@ -965,7 +1054,7 @@ class SessionDetailViewModel @Inject constructor(
         attachments: List<Attachment>,
         createdConversation: Boolean,
         createdConversationId: Int?,
-        notice: String,
+        notice: String?,
     ) {
         liveBuilder = null
         closeStream()
@@ -1014,6 +1103,114 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     fun dismissNotice() = _ui.update { it.copy(notice = null) }
+
+    fun dismissSessionFailures(ids: List<String>) {
+        applySessionFailures { SessionFailures.dismiss(it, ids) }
+    }
+
+    fun removeQueuedPrompt(id: String) {
+        _ui.update { it.copy(queuedPrompts = PromptQueue.remove(it.queuedPrompts, id)) }
+    }
+
+    fun onSessionFailureAction(
+        action: SessionFailureAction,
+        onNewSession: (Int) -> Unit,
+        onLogin: () -> Unit = {},
+    ) {
+        when (action) {
+            SessionFailureAction.RETRY -> retryLastUserPrompt()
+            SessionFailureAction.NEW_SESSION -> {
+                val folderId = folder?.id ?: _ui.value.selectedFolderId ?: _ui.value.summary?.folderId
+                if (folderId != null) onNewSession(folderId)
+            }
+            SessionFailureAction.LOGIN -> onLogin()
+        }
+    }
+
+    private fun retryLastUserPrompt() {
+        val text = SessionFailures.lastUserPromptText(_ui.value.turns + _ui.value.pendingUserTurns)
+        if (text.isNullOrBlank()) {
+            _ui.update { it.copy(notice = appContext.getString(R.string.session_failure_retry_unavailable)) }
+            return
+        }
+        applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.ALL) }
+        send(text)
+    }
+
+    private fun flushQueuedPrompt() {
+        if (_ui.value.isInFlight) return
+        val (head, rest) = PromptQueue.dequeue(_ui.value.queuedPrompts)
+        if (head == null) return
+        _ui.update { it.copy(queuedPrompts = rest) }
+        send(head.text)
+    }
+
+    private fun applySessionFailures(transform: (List<SessionFailureRecord>) -> List<SessionFailureRecord>) {
+        _ui.update {
+            val next = transform(it.sessionFailures)
+            if (next === it.sessionFailures) it else it.copy(sessionFailures = next)
+        }
+    }
+
+    private fun settleRetryIncidentsIfNeeded() {
+        if (!SessionFailures.hasSettleableRetryIncident(_ui.value.sessionFailures)) return
+        applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.RETRY_INCIDENTS) }
+    }
+
+    private fun restoreSessionFailures(snap: app.codeg.android.core.model.LiveSessionSnapshot) {
+        applySessionFailures { current ->
+            var next = SessionFailures.merge(current, snap.sessionFailures)
+            val lastError = snap.lastError
+            if (SessionFailures.active(next).isEmpty() && lastError != null) {
+                next = SessionFailures.upsert(next, SessionFailures.lastErrorAsFailure(lastError))
+            }
+            next
+        }
+    }
+
+    fun loadFileDiff(path: String, fromTask: Boolean) {
+        val active = client ?: return
+        val taskId = _ui.value.relatedTask?.id
+        val folderPath = _ui.value.folderPath
+        viewModelScope.launch {
+            _ui.update { it.copy(changesLoading = true, selectedDiffPath = path, selectedDiff = null) }
+            val text = runCatching {
+                if (fromTask && taskId != null) active.workTaskDiff(taskId, path)
+                else if (!folderPath.isNullOrBlank()) active.gitDiff(folderPath, path)
+                else ""
+            }.getOrDefault("")
+            _ui.update { it.copy(changesLoading = false, selectedDiff = text) }
+        }
+    }
+
+    fun dismissDiff() = _ui.update { it.copy(selectedDiff = null, selectedDiffPath = null) }
+
+    private suspend fun loadRelatedWork(active: CodegClient, conversationId: Int, folder: FolderDetail?) {
+        _ui.update { it.copy(changesLoading = true) }
+        val scoped = runCatching { folder?.id?.let { active.workTaskList(it) } ?: emptyList() }.getOrDefault(emptyList())
+        val tasks = scoped.ifEmpty { runCatching { active.workTaskList() }.getOrDefault(emptyList()) }
+        val related = tasks.firstOrNull { it.conversationId == conversationId }
+        val taskFiles = if (related != null) {
+            runCatching { active.workTaskChangedFiles(related.id) }.getOrDefault(emptyList())
+        } else {
+            emptyList()
+        }
+        val gitChanges = folder?.path?.let { path ->
+            runCatching { active.gitStatus(path) }.getOrDefault(emptyList())
+        } ?: emptyList()
+        val taskByConversation = tasks.mapNotNull { task ->
+            task.conversationId?.let { id -> id to task.id }
+        }.toMap()
+        _ui.update {
+            it.copy(
+                relatedTask = related,
+                taskChangedFiles = taskFiles,
+                gitChanges = gitChanges,
+                taskIdByConversation = taskByConversation,
+                changesLoading = false,
+            )
+        }
+    }
 
     // endregion
 
@@ -1159,7 +1356,13 @@ class SessionDetailViewModel @Inject constructor(
                 _ui.update { it.copy(attachments = it.attachments + att) }
                 added++
             }
-            if (skipped > 0) _ui.update { it.copy(notice = "Added $added image(s); $skipped skipped (too large or over the limit).") }
+            if (skipped > 0) {
+                _ui.update {
+                    it.copy(
+                        notice = appContext.getString(R.string.session_attachment_summary, added, skipped),
+                    )
+                }
+            }
         }
     }
 
@@ -1532,12 +1735,14 @@ data class SessionDetailUiState(
     val loading: Boolean = false,
     val summary: ConversationSummary? = null,
     val folderName: String? = null,
+    val folderBreadcrumb: String? = null,
     val folderPath: String? = null,
     val selectedFolderId: Int? = null,
     val currentBranch: String? = null,
     val isDraftEditable: Boolean = false,
     val availableFolders: List<FolderDetail> = emptyList(),
     val availableAgents: List<AgentType> = emptyList(),
+    val availableMentionAgents: List<AcpAgentInfo> = emptyList(),
     val turns: List<MessageTurn> = emptyList(),
     val pendingUserTurns: List<MessageTurn> = emptyList(),
     val live: LiveTurnState? = null,
@@ -1555,6 +1760,15 @@ data class SessionDetailUiState(
     val pendingQuestion: PendingQuestionUi? = null,
     val pendingPlanApproval: PendingPlanApprovalUi? = null,
     val attachments: List<Attachment> = emptyList(),
+    val relatedTask: WorkTask? = null,
+    val taskChangedFiles: List<WorkTaskChangedFile> = emptyList(),
+    val gitChanges: List<GitStatusEntry> = emptyList(),
+    val taskIdByConversation: Map<Int, Int> = emptyMap(),
+    val selectedDiff: String? = null,
+    val selectedDiffPath: String? = null,
+    val changesLoading: Boolean = false,
+    val sessionFailures: List<SessionFailureRecord> = emptyList(),
+    val queuedPrompts: List<QueuedPrompt> = emptyList(),
 )
 
 /** What to do with a plan approval's revision notes — see [planFollowUpAction]. */

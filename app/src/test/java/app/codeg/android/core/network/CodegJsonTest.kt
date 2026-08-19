@@ -5,6 +5,7 @@ import app.codeg.android.core.model.ConnectBody
 import app.codeg.android.core.model.ConversationStatus
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.ListConversationsBody
 import app.codeg.android.core.model.QuestionAnswer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.decodeFromString
@@ -27,6 +28,16 @@ class CodegJsonTest {
         // null optionals are omitted (Swift `encodeIfPresent` parity).
         assertFalse(json.contains("sessionId"))
         assertFalse(json.contains("preferredModeId"))
+    }
+
+    @Test
+    fun `list conversations request encodes agentType filter`() {
+        val json = CodegJson.request.encodeToString(
+            ListConversationsBody(search = "login", agentType = "grok", sortBy = "updated"),
+        )
+        assertTrue(json.contains("\"agentType\":\"grok\""))
+        assertTrue(json.contains("\"search\":\"login\""))
+        assertFalse(json.contains("folderIds"))
     }
 
     @Test
@@ -60,6 +71,22 @@ class CodegJsonTest {
         assertEquals(ConversationStatus.IN_PROGRESS, c.status)
         assertEquals(5, c.messageCount)
         assertEquals("Fix auth", c.trimmedTitle)
+        assertEquals(0, c.childCount)
+        assertEquals(null, c.parentId)
+    }
+
+    @Test
+    fun `conversation summary decodes delegation parent and child count`() {
+        val c = CodegJson.response.decodeFromString<ConversationSummary>(
+            """{"id":8,"folder_id":2,"title":"Child","agent_type":"grok",
+               "status":"in_progress","message_count":1,"child_count":2,
+               "parent_id":7,"parent_tool_use_id":"tool-1","delegation_call_id":"call-1",
+               "created_at":"2024-01-02T03:04:05Z","updated_at":"2024-01-02T03:04:06Z"}""",
+        )
+        assertEquals(2, c.childCount)
+        assertEquals(7, c.parentId)
+        assertEquals("tool-1", c.parentToolUseId)
+        assertEquals("call-1", c.delegationCallId)
     }
 
     @Test

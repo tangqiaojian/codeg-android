@@ -28,6 +28,12 @@ data class ConversationSummary(
      * `updated_at` — the "Pinned" group sorts by this instead. */
     @Serializable(with = InstantSerializer::class)
     val pinnedAt: Instant? = null,
+    /** Direct non-deleted delegation children (`fill_child_counts`). */
+    val childCount: Int = 0,
+    /** Parent conversation when this row is a delegation child. */
+    val parentId: Int? = null,
+    val parentToolUseId: String? = null,
+    val delegationCallId: String? = null,
 ) {
     /** Non-empty, trimmed user title, or null for an unnamed session. Render
      * verbatim (user data); fall back to a localized "Untitled session" only

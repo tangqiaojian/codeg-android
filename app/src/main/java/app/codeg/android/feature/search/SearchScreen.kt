@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -23,6 +24,8 @@ import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
@@ -115,10 +118,38 @@ fun SearchScreen(
                 ),
             )
 
+            if (ui.availableAgents.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item(key = "all") {
+                        AgentFilterChip(
+                            label = stringResource(R.string.search_filter_all),
+                            selected = ui.agentFilter == null,
+                            onClick = { viewModel.onAgentFilter(null) },
+                        )
+                    }
+                    items(ui.availableAgents, key = { it.agentType.wire }) { agent ->
+                        AgentFilterChip(
+                            label = agent.name.ifBlank { agent.agentType.shortName },
+                            selected = ui.agentFilter == agent.agentType,
+                            onClick = {
+                                viewModel.onAgentFilter(
+                                    if (ui.agentFilter == agent.agentType) null else agent.agentType,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+
+            val idle = query.isBlank() && ui.agentFilter == null
             Box(Modifier.fillMaxSize()) {
                 when {
-                    query.isBlank() && recent.isNotEmpty() -> RecentList(recent, viewModel::useRecent, viewModel::clearRecent)
-                    query.isBlank() ->
+                    idle && recent.isNotEmpty() -> RecentList(recent, viewModel::useRecent, viewModel::clearRecent)
+                    idle ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                             EmptyState(Icons.Rounded.Search, stringResource(R.string.search_title), stringResource(R.string.search_hint))
                         }
@@ -128,7 +159,15 @@ fun SearchScreen(
                         }
                     ui.results.isEmpty() && !ui.searching ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            EmptyState(Icons.Rounded.Search, stringResource(R.string.search_no_results), stringResource(R.string.search_no_results_for, ui.query))
+                            EmptyState(
+                                Icons.Rounded.Search,
+                                stringResource(R.string.search_no_results),
+                                if (query.isBlank()) {
+                                    stringResource(R.string.search_no_results_agent)
+                                } else {
+                                    stringResource(R.string.search_no_results_for, ui.query)
+                                },
+                            )
                         }
                     else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                         items(ui.results, key = { it.id }) { c ->
@@ -139,6 +178,22 @@ fun SearchScreen(
             }
         }
     }
+}
+
+@Composable
+private fun AgentFilterChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    val colors = CodegTheme.colors
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = colors.accent.copy(alpha = 0.18f),
+            selectedLabelColor = colors.accent,
+            containerColor = colors.codeSurface,
+            labelColor = colors.textSecondary,
+        ),
+    )
 }
 
 @Composable

@@ -22,6 +22,7 @@ import app.codeg.android.core.model.UpdatePiConfigBody
 import app.codeg.android.core.model.ValidatePiCommandBody
 import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.core.model.HealthResponse
+import app.codeg.android.core.model.ListChildConversationsBody
 import app.codeg.android.core.model.ListConversationsBody
 import app.codeg.android.core.model.PromptBody
 import app.codeg.android.core.model.PromptInputBlock
@@ -31,6 +32,53 @@ import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.UpdateConversationPinnedBody
 import app.codeg.android.core.model.UpdateConversationStatusBody
 import app.codeg.android.core.model.UpdateConversationTitleBody
+import app.codeg.android.core.model.Automation
+import app.codeg.android.core.model.AutomationCancelRunBody
+import app.codeg.android.core.model.AutomationComputeNextRunBody
+import app.codeg.android.core.model.AutomationCreateBody
+import app.codeg.android.core.model.AutomationDraft
+import app.codeg.android.core.model.AutomationRun
+import app.codeg.android.core.model.AutomationRunNowBody
+import app.codeg.android.core.model.AutomationRunsBody
+import app.codeg.android.core.model.AutomationSetEnabledBody
+import app.codeg.android.core.model.AutomationUpdateBody
+import app.codeg.android.core.model.WorkTask
+import app.codeg.android.core.model.WorkTaskArchiveBody
+import app.codeg.android.core.model.WorkTaskCancelBody
+import app.codeg.android.core.model.WorkTaskChangedFile
+import app.codeg.android.core.model.WorkTaskCompleteBody
+import app.codeg.android.core.model.WorkTaskCreateBody
+import app.codeg.android.core.model.WorkTaskDraft
+import app.codeg.android.core.model.WorkTaskDeleteBody
+import app.codeg.android.core.model.WorkTaskDiffBody
+import app.codeg.android.core.model.WorkTaskEvent
+import app.codeg.android.core.model.WorkTaskEventsBody
+import app.codeg.android.core.model.WorkTaskListBody
+import app.codeg.android.core.model.WorkTaskFolderBody
+import app.codeg.android.core.model.WorkTaskMergeBody
+import app.codeg.android.core.model.WorkTaskReorderBody
+import app.codeg.android.core.model.WorkTaskRequeueBody
+import app.codeg.android.core.model.WorkTaskRetryBody
+import app.codeg.android.core.model.WorkTaskReturnBody
+import app.codeg.android.core.model.WorkTaskScheduleBody
+import app.codeg.android.core.model.WorkTaskSettingsSetBody
+import app.codeg.android.core.model.WorkTaskFolderSettings
+import app.codeg.android.core.model.WorkTaskTemplate
+import app.codeg.android.core.model.WorkTaskTemplateDraft
+import app.codeg.android.core.model.WorkTaskTemplateSaveBody
+import app.codeg.android.core.model.WorkTaskUpdateBody
+import app.codeg.android.core.model.TokenUsageFacets
+import app.codeg.android.core.model.TokenUsageFilter
+import app.codeg.android.core.model.TokenUsageReport
+import app.codeg.android.core.model.TokenUsageReportBody
+import app.codeg.android.core.model.TokenUsageSyncBody
+import app.codeg.android.core.model.TokenUsageSyncResult
+import app.codeg.android.core.model.TokenUsageSyncStatus
+import app.codeg.android.core.model.TerminalIdBody
+import app.codeg.android.core.model.TerminalInfo
+import app.codeg.android.core.model.TerminalResizeBody
+import app.codeg.android.core.model.TerminalSpawnBody
+import app.codeg.android.core.model.TerminalWriteBody
 import app.codeg.android.core.model.CloneRepositoryBody
 import app.codeg.android.core.model.DirectoryEntry
 import app.codeg.android.core.model.DirectoryItem
@@ -130,6 +178,7 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.serialization.DeserializationStrategy
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.builtins.nullable
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -180,6 +229,8 @@ class CodegClient(
         status: String? = null,
         search: String? = null,
         sortBy: String? = null,
+        includeChildren: Boolean = false,
+        agentType: String? = null,
     ): List<ConversationSummary> =
         decode(
             send(
@@ -187,14 +238,203 @@ class CodegClient(
                 encode(
                     ListConversationsBody(
                         folderIds = folderIds,
+                        agentType = agentType,
                         search = search,
                         sortBy = sortBy,
                         status = status,
+                        includeChildren = includeChildren,
                     ),
                 ),
             ),
             ListSerializer(ConversationSummary.serializer()),
         )
+
+    suspend fun listChildConversations(parentConversationId: Int): List<ConversationSummary> =
+        decode(
+            send(
+                "list_child_conversations",
+                encode(ListChildConversationsBody(parentConversationId)),
+            ),
+            ListSerializer(ConversationSummary.serializer()),
+        )
+
+    suspend fun workTaskList(folderId: Int? = null): List<WorkTask> =
+        decode(send("work_task_list", encode(WorkTaskListBody(folderId))), ListSerializer(WorkTask.serializer()))
+
+    suspend fun workTaskGet(id: Int): WorkTask =
+        decode(send("work_task_get", encode(IdBody(id))), WorkTask.serializer())
+
+    suspend fun workTaskEvents(id: Int, limit: Int = 500): List<WorkTaskEvent> =
+        decode(send("work_task_events", encode(WorkTaskEventsBody(id, limit))), ListSerializer(WorkTaskEvent.serializer()))
+
+    suspend fun workTaskCreate(draft: WorkTaskDraft): WorkTask =
+        decode(send("work_task_create", encode(WorkTaskCreateBody(draft))), WorkTask.serializer())
+
+    suspend fun workTaskUpdate(id: Int, draft: WorkTaskDraft): WorkTask =
+        decode(send("work_task_update", encode(WorkTaskUpdateBody(id, draft))), WorkTask.serializer())
+
+    suspend fun workTaskReorder(folderId: Int, orderedIds: List<Int>) {
+        send("work_task_reorder", encode(WorkTaskReorderBody(folderId, orderedIds)))
+    }
+
+    suspend fun workTaskDelete(id: Int, deleteWorktree: Boolean = false) {
+        send("work_task_delete", encode(WorkTaskDeleteBody(id, deleteWorktree)))
+    }
+
+    suspend fun workTaskStart(id: Int) {
+        send("work_task_start", encode(IdBody(id)))
+    }
+
+    suspend fun workTaskRetry(id: Int, note: String? = null, blocks: List<PromptInputBlock> = emptyList()) {
+        send("work_task_retry", encode(WorkTaskRetryBody(id, note, blocks)))
+    }
+
+    suspend fun workTaskRequeue(id: Int, note: String? = null, blocks: List<PromptInputBlock> = emptyList()) {
+        send("work_task_requeue", encode(WorkTaskRequeueBody(id, note, blocks)))
+    }
+
+    suspend fun workTaskSchedule(id: Int, scheduledAt: String?) {
+        send("work_task_schedule", encode(WorkTaskScheduleBody(id, scheduledAt)))
+    }
+
+    suspend fun workTaskReturn(id: Int, feedback: String, intent: String? = null, blocks: List<PromptInputBlock> = emptyList()) {
+        send("work_task_return", encode(WorkTaskReturnBody(id, feedback, intent, blocks)))
+    }
+
+    suspend fun workTaskCancel(id: Int, reason: String? = null) {
+        send("work_task_cancel", encode(WorkTaskCancelBody(id, reason)))
+    }
+
+    suspend fun workTaskMerge(id: Int, message: String? = null, deleteWorktree: Boolean = false): Boolean =
+        decode(send("work_task_merge", encode(WorkTaskMergeBody(id, message, deleteWorktree))), Boolean.serializer())
+
+    suspend fun workTaskMergeUnqueue(id: Int) {
+        send("work_task_merge_unqueue", encode(IdBody(id)))
+    }
+
+    suspend fun workTaskComplete(id: Int, deleteWorktree: Boolean = false) {
+        send("work_task_complete", encode(WorkTaskCompleteBody(id, deleteWorktree)))
+    }
+
+    suspend fun workTaskArchive(id: Int, archived: Boolean) {
+        send("work_task_archive", encode(WorkTaskArchiveBody(id, archived)))
+    }
+
+    suspend fun workTaskCleanup(id: Int) {
+        send("work_task_cleanup", encode(IdBody(id)))
+    }
+
+    suspend fun workTaskDiff(id: Int, file: String? = null): String =
+        decode(send("work_task_diff", encode(WorkTaskDiffBody(id, file))), String.serializer())
+
+    suspend fun workTaskChangedFiles(id: Int): List<WorkTaskChangedFile> =
+        decode(send("work_task_changed_files", encode(IdBody(id))), ListSerializer(WorkTaskChangedFile.serializer()))
+
+    suspend fun workTaskSettingsEffective(folderId: Int): WorkTaskFolderSettings =
+        decode(send("work_task_settings_effective", encode(WorkTaskFolderBody(folderId))), WorkTaskFolderSettings.serializer())
+
+    suspend fun workTaskSettingsGet(folderId: Int): WorkTaskFolderSettings =
+        decode(send("work_task_settings_get", encode(WorkTaskFolderBody(folderId))), WorkTaskFolderSettings.serializer())
+
+    suspend fun workTaskSettingsGetOwn(folderId: Int): WorkTaskFolderSettings? =
+        decode(send("work_task_settings_get_own", encode(WorkTaskFolderBody(folderId))), WorkTaskFolderSettings.serializer().nullable)
+
+    suspend fun workTaskSettingsSet(folderId: Int, settings: WorkTaskFolderSettings) {
+        send("work_task_settings_set", encode(WorkTaskSettingsSetBody(folderId, settings)))
+    }
+
+    suspend fun workTaskSettingsDelete(folderId: Int) {
+        send("work_task_settings_delete", encode(WorkTaskFolderBody(folderId)))
+    }
+
+    suspend fun workTaskTemplateList(): List<WorkTaskTemplate> =
+        decode(send("work_task_template_list", encode(EmptyBody)), ListSerializer(WorkTaskTemplate.serializer()))
+
+    suspend fun workTaskTemplateSave(draft: WorkTaskTemplateDraft): WorkTaskTemplate =
+        decode(send("work_task_template_save", encode(WorkTaskTemplateSaveBody(draft))), WorkTaskTemplate.serializer())
+
+    suspend fun workTaskTemplateDelete(id: Int) {
+        send("work_task_template_delete", encode(IdBody(id)))
+    }
+
+    suspend fun automationList(): List<Automation> =
+        decode(send("automation_list", encode(EmptyBody)), ListSerializer(Automation.serializer()))
+
+    suspend fun automationGet(id: Int): Automation =
+        decode(send("automation_get", encode(IdBody(id))), Automation.serializer())
+
+    suspend fun automationRuns(automationId: Int, limit: Int = 100): List<AutomationRun> =
+        decode(
+            send("automation_runs", encode(AutomationRunsBody(automationId, limit))),
+            ListSerializer(AutomationRun.serializer()),
+        )
+
+    suspend fun automationCreate(draft: AutomationDraft): Automation =
+        decode(send("automation_create", encode(AutomationCreateBody(draft))), Automation.serializer())
+
+    suspend fun automationUpdate(id: Int, draft: AutomationDraft): Automation =
+        decode(send("automation_update", encode(AutomationUpdateBody(id, draft))), Automation.serializer())
+
+    suspend fun automationSetEnabled(id: Int, enabled: Boolean): Automation =
+        decode(send("automation_set_enabled", encode(AutomationSetEnabledBody(id, enabled))), Automation.serializer())
+
+    suspend fun automationDelete(id: Int) {
+        send("automation_delete", encode(IdBody(id)))
+    }
+
+    suspend fun automationMarkSeen() {
+        send("automation_mark_seen", encode(EmptyBody))
+    }
+
+    suspend fun automationComputeNextRun(cron: String, timezone: String): String? {
+        val text = send("automation_compute_next_run", encode(AutomationComputeNextRunBody(cron, timezone)))
+        if (isJsonNull(text)) return null
+        return runCatching { CodegJson.response.decodeFromString(String.serializer(), text) }.getOrNull()
+    }
+
+    suspend fun automationRunNow(automationId: Int): Int =
+        decode(send("automation_run_now", encode(AutomationRunNowBody(automationId))), Int.serializer())
+
+    suspend fun automationCancelRun(runId: Int) {
+        send("automation_cancel_run", encode(AutomationCancelRunBody(runId)))
+    }
+
+    suspend fun tokenUsageReport(filter: TokenUsageFilter): TokenUsageReport =
+        decode(send("token_usage_report", encode(TokenUsageReportBody(filter))), TokenUsageReport.serializer())
+
+    suspend fun tokenUsageFacets(): TokenUsageFacets =
+        decode(send("token_usage_facets", encode(EmptyBody)), TokenUsageFacets.serializer())
+
+    suspend fun tokenUsageStatus(): TokenUsageSyncStatus =
+        decode(send("token_usage_status", encode(EmptyBody)), TokenUsageSyncStatus.serializer())
+
+    suspend fun tokenUsageSync(mode: String = "incremental"): TokenUsageSyncResult =
+        decode(send("token_usage_sync", encode(TokenUsageSyncBody(mode))), TokenUsageSyncResult.serializer())
+
+    suspend fun terminalSpawn(
+        workingDir: String,
+        shell: String? = null,
+        initialCommand: String? = null,
+        terminalId: String? = null,
+    ): String = decode(
+        send("terminal_spawn", encode(TerminalSpawnBody(workingDir, shell, initialCommand, terminalId))),
+        String.serializer(),
+    )
+
+    suspend fun terminalWrite(terminalId: String, data: String) {
+        send("terminal_write", encode(TerminalWriteBody(terminalId, data)))
+    }
+
+    suspend fun terminalResize(terminalId: String, cols: Int, rows: Int) {
+        send("terminal_resize", encode(TerminalResizeBody(terminalId, cols, rows)))
+    }
+
+    suspend fun terminalKill(terminalId: String) {
+        send("terminal_kill", encode(TerminalIdBody(terminalId)))
+    }
+
+    suspend fun terminalList(): List<TerminalInfo> =
+        decode(send("terminal_list", encode(EmptyBody)), ListSerializer(TerminalInfo.serializer()))
 
     /** Full session detail incl. message history. */
     suspend fun conversationDetail(id: Int): ConversationDetail =

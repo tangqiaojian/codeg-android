@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import app.codeg.android.core.data.ServerRepository
 import app.codeg.android.core.datastore.RecentSearchesStore
+import app.codeg.android.core.model.AcpAgentInfo
+import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.network.CodegClient
 import app.codeg.android.core.network.displayMessage
@@ -46,7 +48,13 @@ class SearchViewModel @Inject constructor(
             repository.selectedProfile.collectLatest { profile ->
                 client = profile?.let { repository.client(it) }
                 folderNames = client?.let { c -> runCatching { c.listFolders() }.getOrNull()?.associate { it.id to it.name } } ?: emptyMap()
-                _ui.update { it.copy(folderNames = folderNames) }
+                val agents = client?.let { c ->
+                    runCatching { c.acpListAgents() }.getOrNull()
+                        ?.filter { it.available && it.enabled }
+                        ?.sortedBy { it.sortOrder }
+                        .orEmpty()
+                }.orEmpty()
+                _ui.update { it.copy(folderNames = folderNames, availableAgents = agents) }
             }
         }
         viewModelScope.launch {
@@ -55,6 +63,11 @@ class SearchViewModel @Inject constructor(
     }
 
     fun onQueryChange(value: String) { _query.value = value }
+
+    fun onAgentFilter(type: AgentType?) {
+        _ui.update { it.copy(agentFilter = type) }
+        viewModelScope.launch { runSearch(_query.value) }
+    }
 
     fun submit() {
         val q = _query.value.trim()
@@ -70,16 +83,21 @@ class SearchViewModel @Inject constructor(
 
     private suspend fun runSearch(raw: String) {
         val q = raw.trim()
-        if (q.isEmpty()) {
+        val agent = _ui.value.agentFilter
+        if (q.isEmpty() && agent == null) {
             _ui.update { it.copy(results = emptyList(), searching = false, query = "", error = null) }
             return
         }
         val c = client ?: return
         _ui.update { it.copy(searching = true, query = q, error = null) }
         try {
-            val results = c.listConversations(search = q, sortBy = "updated")
+            val results = c.listConversations(
+                search = q.takeIf { it.isNotEmpty() },
+                sortBy = "updated",
+                agentType = agent?.wire,
+            )
             _ui.update { it.copy(results = results, searching = false) }
-            recentStore.add(q)
+            if (q.isNotEmpty()) recentStore.add(q)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -92,6 +110,8 @@ data class SearchUiState(
     val query: String = "",
     val results: List<ConversationSummary> = emptyList(),
     val folderNames: Map<Int, String> = emptyMap(),
+    val availableAgents: List<AcpAgentInfo> = emptyList(),
+    val agentFilter: AgentType? = null,
     val searching: Boolean = false,
     val error: String? = null,
 )

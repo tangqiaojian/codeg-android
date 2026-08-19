@@ -31,6 +31,100 @@ sealed interface PromptInputBlock {
 object EmptyBody
 
 @Serializable
+data class WorkTaskListBody(@SerialName("folderId") val folderId: Int? = null)
+
+@Serializable
+data class WorkTaskCreateBody(val draft: WorkTaskDraft)
+
+@Serializable
+data class WorkTaskEventsBody(val taskId: Int, val limit: Int = 500)
+
+@Serializable
+data class WorkTaskUpdateBody(val id: Int, val draft: WorkTaskDraft)
+
+@Serializable
+data class WorkTaskReorderBody(val folderId: Int, val orderedIds: List<Int>)
+
+@Serializable
+data class WorkTaskDeleteBody(val id: Int, val deleteWorktree: Boolean = false)
+
+@Serializable
+data class WorkTaskRetryBody(
+    val id: Int,
+    val note: String? = null,
+    val blocks: List<PromptInputBlock> = emptyList(),
+)
+
+@Serializable
+data class WorkTaskRequeueBody(
+    val id: Int,
+    val note: String? = null,
+    val blocks: List<PromptInputBlock> = emptyList(),
+)
+
+@Serializable
+data class WorkTaskScheduleBody(val id: Int, val scheduledAt: String? = null)
+
+@Serializable
+data class WorkTaskReturnBody(
+    val id: Int,
+    val feedback: String,
+    val intent: String? = null,
+    val blocks: List<PromptInputBlock> = emptyList(),
+)
+
+@Serializable
+data class WorkTaskCancelBody(val id: Int, val reason: String? = null)
+
+@Serializable
+data class WorkTaskMergeBody(
+    val id: Int,
+    val message: String? = null,
+    val deleteWorktree: Boolean = false,
+)
+
+@Serializable
+data class WorkTaskCompleteBody(val id: Int, val deleteWorktree: Boolean = false)
+
+@Serializable
+data class WorkTaskArchiveBody(val id: Int, val archived: Boolean)
+
+@Serializable
+data class WorkTaskDiffBody(val id: Int, val file: String? = null)
+
+@Serializable
+data class WorkTaskFolderBody(val folderId: Int)
+
+@Serializable
+data class WorkTaskSettingsSetBody(val folderId: Int, val settings: WorkTaskFolderSettings)
+
+@Serializable
+data class WorkTaskTemplateSaveBody(val draft: WorkTaskTemplateDraft)
+
+@Serializable
+data class TokenUsageReportBody(val filter: TokenUsageFilter)
+
+@Serializable
+data class TokenUsageSyncBody(val mode: String = "incremental")
+
+@Serializable
+data class TerminalSpawnBody(
+    val workingDir: String,
+    val shell: String? = null,
+    val initialCommand: String? = null,
+    val terminalId: String? = null,
+)
+
+@Serializable
+data class TerminalWriteBody(val terminalId: String, val data: String)
+
+@Serializable
+data class TerminalResizeBody(val terminalId: String, val cols: Int, val rows: Int)
+
+@Serializable
+data class TerminalIdBody(val terminalId: String)
+
+@Serializable
 data class ListConversationsBody(
     val folderIds: List<Int>? = null,
     val agentType: String? = null,
@@ -38,6 +132,11 @@ data class ListConversationsBody(
     val sortBy: String? = null,
     val status: String? = null,
     val includeChildren: Boolean? = null,
+)
+
+@Serializable
+data class ListChildConversationsBody(
+    val parentConversationId: Int,
 )
 
 @Serializable

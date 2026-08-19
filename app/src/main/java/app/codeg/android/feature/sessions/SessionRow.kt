@@ -3,6 +3,7 @@ package app.codeg.android.feature.sessions
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,8 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.ExpandLess
+import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.DropdownMenu
@@ -59,6 +62,10 @@ fun SessionRow(
     folderName: String? = null,
     selected: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    depth: Int = 0,
+    childCount: Int = 0,
+    childrenExpanded: Boolean = false,
+    onToggleChildren: (() -> Unit)? = null,
 ) {
     val colors = CodegTheme.colors
     var menuOpen by remember { mutableStateOf(false) }
@@ -67,6 +74,7 @@ fun SessionRow(
         Row(
             modifier = modifier
                 .fillMaxWidth()
+                .padding(start = (depth * 16).dp)
                 .clip(RoundedCornerShape(14.dp))
                 .then(
                     if (selected) Modifier.background(colors.accent.copy(alpha = 0.18f)) else Modifier,
@@ -104,6 +112,31 @@ fun SessionRow(
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
+
+            if (childCount > 0 && onToggleChildren != null) {
+                Row(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable(onClick = onToggleChildren)
+                        .padding(horizontal = 4.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = childCount.toString(),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = colors.textTertiary,
+                    )
+                    Icon(
+                        if (childrenExpanded) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                        contentDescription = stringResource(
+                            if (childrenExpanded) R.string.sessions_collapse else R.string.sessions_expand,
+                        ),
+                        tint = colors.textTertiary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                }
+            }
 
             if (folderName != null) {
                 Row(

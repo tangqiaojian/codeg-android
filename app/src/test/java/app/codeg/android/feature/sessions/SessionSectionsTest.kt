@@ -115,6 +115,65 @@ class SessionSectionsTest {
     }
 
     @Test
+    fun `worktree folders nest under their workspace instead of sitting as peers`() {
+        val folders = listOf(
+            folder(1, "repo", sortOrder = 0),
+            FolderDetail(id = 2, name = "repo-feat", path = "/p/2", sortOrder = 0, color = "#abc", parentId = 1, gitBranch = "feat"),
+            folder(3, "other", sortOrder = 1),
+        )
+        val convs = listOf(
+            conv(10, folderId = 1, updated = 100),
+            conv(20, folderId = 2, updated = 90),
+            conv(30, folderId = 3, updated = 80),
+        )
+
+        val sections = buildSessionSections(folders, convs)
+
+        assertEquals(listOf("folder-1", "folder-3"), sections.map { it.id })
+        val repo = sections.first { it.id == "folder-1" }
+        val repoKind = repo.kind as SectionKind.Folder
+        assertEquals("repo", repoKind.name)
+        assertEquals(false, repoKind.isWorktree)
+        assertEquals(0, repoKind.depth)
+        assertEquals(listOf(10), repo.rows.map { it.conversation.id })
+        assertEquals(listOf("folder-2"), repo.nested.map { it.id })
+        val worktree = repo.nested.single()
+        val wtKind = worktree.kind as SectionKind.Folder
+        assertEquals(true, wtKind.isWorktree)
+        assertEquals(1, wtKind.depth)
+        assertEquals("repo", wtKind.workspaceName)
+        assertEquals("repo / feat", worktree.breadcrumb)
+        assertEquals(listOf(20), worktree.rows.map { it.conversation.id })
+        assertEquals(1, worktree.rows.single().depth)
+    }
+
+    @Test
+    fun `delegation children nest under their parent instead of appearing as siblings`() {
+        val folders = listOf(folder(1, "repo"))
+        val parent = conv(10, folderId = 1, updated = 200).copy(childCount = 1)
+        val child = conv(11, folderId = 1, updated = 180).copy(parentId = 10)
+        val sibling = conv(12, folderId = 1, updated = 160)
+
+        val repo = buildSessionSections(folders, listOf(parent, child, sibling)).single()
+
+        assertEquals(listOf(10, 12), repo.rows.map { it.conversation.id })
+        assertEquals(listOf(11), repo.rows.first { it.conversation.id == 10 }.children.map { it.conversation.id })
+        assertEquals(1, repo.rows.first { it.conversation.id == 10 }.children.single().depth)
+        assertTrue(repo.rows.none { it.conversation.id == 11 })
+    }
+
+    @Test
+    fun `orphan child without a loaded parent stays a top-level row`() {
+        val folders = listOf(folder(1, "repo"))
+        val orphan = conv(11, folderId = 1, updated = 180).copy(parentId = 99)
+
+        val repo = buildSessionSections(folders, listOf(orphan)).single()
+
+        assertEquals(listOf(11), repo.rows.map { it.conversation.id })
+        assertEquals(0, repo.rows.single().depth)
+    }
+
+    @Test
     fun `orphan conversations fall into Other and resolve no folder tag`() {
         val sections = buildSessionSections(
             listOf(folder(1, "A")),
@@ -125,5 +184,34 @@ class SessionSectionsTest {
         assertTrue(other.kind is SectionKind.Other)
         assertEquals(listOf(40), other.rows.map { it.conversation.id })
         assertNull(other.rows.single().folderName) // unknown folder → no tag
+    }
+
+    @Test
+    fun `search drops empty folders and keeps matching titles or agents`() {
+        val folders = listOf(folder(1, "Alpha"), folder(2, "Beta"))
+        val convs = listOf(
+            conv(10, folderId = 1, updated = 100).copy(title = "Fix login"),
+            conv(11, folderId = 1, updated = 90).copy(title = "Unrelated"),
+            conv(20, folderId = 2, updated = 80).copy(title = "Docs"),
+            conv(30, folderId = 1, updated = 70, pinnedAt = 10).copy(title = "Login follow-up"),
+        )
+
+        val sections = buildSessionSections(folders, convs, search = "login")
+
+        assertEquals(listOf("pinned", "folder-1"), sections.map { it.id })
+        assertEquals(listOf(30), sections.first { it.id == "pinned" }.rows.map { it.conversation.id })
+        assertEquals(listOf(10), sections.first { it.id == "folder-1" }.rows.map { it.conversation.id })
+    }
+
+    @Test
+    fun `search keeps a parent when only a child matches`() {
+        val folders = listOf(folder(1, "repo"))
+        val parent = conv(10, folderId = 1, updated = 200).copy(title = "Parent", childCount = 1)
+        val child = conv(11, folderId = 1, updated = 180).copy(title = "delegate login", parentId = 10)
+
+        val repo = buildSessionSections(folders, listOf(parent, child), search = "login").single()
+
+        assertEquals(listOf(10), repo.rows.map { it.conversation.id })
+        assertEquals(listOf(11), repo.rows.single().children.map { it.conversation.id })
     }
 }

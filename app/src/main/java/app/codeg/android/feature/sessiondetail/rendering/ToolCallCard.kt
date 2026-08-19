@@ -71,6 +71,13 @@ private val SuccessGreen = Color(0xFF85D18F)
 /** A collapsible card for a single tool call. Port of iOS `ToolCallCard`. */
 @Composable
 fun ToolCallCard(vm: ToolCallVM, modifier: Modifier = Modifier, nested: Boolean = false) {
+    if (DelegationCard.isDelegationTool(vm.rawName)) {
+        val model = DelegationCard.parse(vm.input, vm.output, vm.meta, vm.isError, vm.state)
+        if (model.hasModel) {
+            DelegationCardView(model, modifier)
+            return
+        }
+    }
     val colors = CodegTheme.colors
     val autoExpand = vm.state == ToolCallState.RUNNING ||
         vm.state == ToolCallState.ERROR ||

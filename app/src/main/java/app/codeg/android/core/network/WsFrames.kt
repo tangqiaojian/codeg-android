@@ -2,6 +2,7 @@ package app.codeg.android.core.network
 
 import app.codeg.android.core.model.EventEnvelope
 import app.codeg.android.core.model.LiveSessionSnapshot
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
@@ -34,6 +35,7 @@ object WsClientMessage {
  * [EventStream] routes both into this one type (mirroring the iOS `Frame`).
  */
 sealed interface StreamFrame {
+    data class Global(val channel: String, val payload: JsonElement) : StreamFrame
     /** Legacy `{channel:"__ready__"}` — the link is usable; safe to attach/prompt. */
     data object Ready : StreamFrame
     data class Snapshot(val snapshot: LiveSessionSnapshot) : StreamFrame

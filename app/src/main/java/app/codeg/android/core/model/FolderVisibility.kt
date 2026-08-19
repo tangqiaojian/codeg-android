@@ -21,6 +21,9 @@ object FolderVisibility {
     fun filterTopLevel(folders: List<FolderDetail>): List<FolderDetail> =
         folders.filter { it.parentId == null }
 
+    fun filterProjectFolders(folders: List<FolderDetail>): List<FolderDetail> =
+        folders.filter { it.parentId == null && !it.isChat }
+
     /**
      * The root repo folder for [folder] (itself when top-level, or when its
      * parent isn't in [all]).
@@ -37,6 +40,19 @@ object FolderVisibility {
     fun displayName(folder: FolderDetail, all: List<FolderDetail>): String {
         val pid = folder.parentId ?: return folder.name
         return all.firstOrNull { it.id == pid }?.name ?: folder.name
+    }
+
+    /**
+     * Workspace → folder breadcrumb. Worktrees show `root / branch` (or the
+     * worktree name when the branch is missing) so the session list can present
+     * hierarchy without flattening every folder to the same header.
+     */
+    fun breadcrumb(folder: FolderDetail, all: List<FolderDetail>): String {
+        if (!isWorktree(folder)) return folder.name
+        val root = resolveRoot(folder, all)
+        if (root.id == folder.id) return folder.name
+        val leaf = folder.gitBranch?.takeIf { it.isNotBlank() } ?: folder.name
+        return "${root.name} / $leaf"
     }
 
     // region Branch-switch routing

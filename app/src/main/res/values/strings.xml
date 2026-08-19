@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Codeg</string>
+    <string name="app_name">Codeg WebParity</string>
 
     <!-- Onboarding -->
     <string name="onboarding_title">Codeg</string>
@@ -65,6 +65,219 @@
     <string name="session_agent_options">Agent options</string>
     <string name="sessions_collapse">Collapse</string>
     <string name="sessions_expand">Expand</string>
+    <string name="sessions_workspace">Workspace</string>
+    <string name="sessions_worktree">Worktree</string>
+    <string name="session_status_running">Running</string>
+    <string name="session_status_review">Review</string>
+    <string name="session_status_done">Done</string>
+    <string name="session_status_cancelled">Cancelled</string>
+    <string name="session_status_other">—</string>
+    <string name="session_role_you">You</string>
+    <string name="session_role_assistant">Assistant · %1$s</string>
+    <string name="session_changes_title">Changed files</string>
+    <string name="session_changes_file_count">%1$d files</string>
+    <string name="sessions_search_placeholder">Filter sessions</string>
+    <string name="session_find">Find in session</string>
+    <string name="session_find_placeholder">Find in messages</string>
+    <string name="session_find_previous">Previous match</string>
+    <string name="session_find_next">Next match</string>
+    <string name="session_failure_category_connection">Connection issue</string>
+    <string name="session_failure_category_access">Access issue</string>
+    <string name="session_failure_category_limit">Limit reached</string>
+    <string name="session_failure_category_request">Request rejected</string>
+    <string name="session_failure_category_service">Service issue</string>
+    <string name="session_failure_category_unknown">Session issue</string>
+    <string name="session_failure_action_retry">Retry</string>
+    <string name="session_failure_action_login">Sign in</string>
+    <string name="session_failure_action_new_session">New session</string>
+    <string name="session_failure_recovered">Recovered</string>
+    <string name="session_failure_more">+%1$d more</string>
+    <string name="session_failure_retry_unavailable">No previous message to resend.</string>
+    <string name="live_status_connecting">Connecting…</string>
+    <string name="live_status_thinking">Thinking…</string>
+    <string name="live_status_reattaching">Reconnecting to session…</string>
+    <string name="live_status_retrying">Retrying…</string>
+    <string name="live_status_reconnecting">Reconnecting…</string>
+    <string name="live_status_tool">tool</string>
+    <string name="live_status_running_tool">Running %1$s…</string>
+    <string name="delegation_unknown_agent">Unknown agent</string>
+    <string name="delegation_status_starting">Starting</string>
+    <string name="delegation_status_running">Running</string>
+    <string name="delegation_status_waiting">Waiting</string>
+    <string name="delegation_status_ok">Done</string>
+    <string name="delegation_status_err">Failed</string>
+    <string name="delegation_open_session">View session</string>
+    <string name="delegation_open_task">View task</string>
+
+    <!-- To-dos -->
+    <string name="todos_title">To-dos</string>
+    <string name="todos_add">New to-do</string>
+    <string name="todos_empty_title">No to-dos yet</string>
+    <string name="todos_empty_message">Create a to-do to run an agent task later.</string>
+    <string name="todos_new_title">New to-do</string>
+    <string name="todos_title_field">Title</string>
+    <string name="todos_prompt_field">Prompt</string>
+    <string name="todos_folder_field">Folder</string>
+    <string name="todos_agent_field">Agent</string>
+    <string name="todos_inherit_agent">Use folder default</string>
+    <string name="todos_create">Create to-do</string>
+    <string name="todos_detail">To-do details</string>
+    <string name="todos_start">Start task</string>
+    <string name="todos_open_conversation">Open conversation</string>
+    <string name="todos_refresh">Refresh task</string>
+    <string name="todos_status_todo">To-do</string>
+    <string name="todos_status_queued">Queued</string>
+    <string name="todos_status_preparing">Preparing</string>
+    <string name="todos_status_running">Running</string>
+    <string name="todos_status_awaiting_input">Needs input</string>
+    <string name="todos_status_review">Review</string>
+    <string name="todos_status_merging">Merging</string>
+    <string name="todos_status_done">Done</string>
+    <string name="todos_status_failed">Failed</string>
+    <string name="todos_status_canceled">Canceled</string>
+    <string name="todos_status_unknown">Unknown</string>
+    <string name="todos_prompt_empty">No prompt captured.</string>
+    <string name="todos_retry">Retry task</string>
+    <string name="todos_requeue">Requeue task</string>
+    <string name="todos_schedule">Schedule task</string>
+    <string name="todos_return">Return for revision</string>
+    <string name="todos_cancel">Cancel task</string>
+    <string name="todos_merge">Merge task</string>
+    <string name="todos_complete">Complete task</string>
+    <string name="todos_archive">Archive task</string>
+    <string name="todos_unarchive">Unarchive task</string>
+    <string name="todos_cleanup">Clean up worktree</string>
+    <string name="todos_unqueue_merge">Cancel queued merge</string>
+    <string name="todos_delete">Delete task</string>
+    <string name="todos_tools">Task tools</string>
+    <string name="todos_settings">Task settings</string>
+    <string name="todos_auto_process">Automatically process queued tasks</string>
+    <string name="todos_auto_merge">Automatically merge reviewed tasks</string>
+    <string name="todos_delete_worktree_default">Delete worktree after completion</string>
+    <string name="todos_max_concurrent">Maximum concurrent tasks (0 = unlimited)</string>
+    <string name="todos_worktree_root">Worktree root (optional)</string>
+    <string name="todos_preflight">Preflight command (optional)</string>
+    <string name="todos_init_command">Worktree init command (optional)</string>
+    <string name="todos_save_settings">Save settings</string>
+    <string name="todos_reset_settings">Reset folder settings</string>
+    <string name="todos_templates">Task templates</string>
+    <string name="todos_template_new">New template</string>
+    <string name="todos_template_name">Template name</string>
+    <string name="todos_template_save">Save template</string>
+    <string name="todos_template_delete">Delete template</string>
+    <string name="todos_templates_empty">No templates yet.</string>
+    <string name="todos_timeline">Timeline</string>
+    <string name="todos_changed_files">Changed files</string>
+    <string name="todos_diff">View diff</string>
+    <string name="todos_diff_empty">No changes detected.</string>
+    <string name="todos_note_optional">Note (optional)</string>
+    <string name="todos_schedule_hint">ISO time, for example 2026-08-20T09:00:00Z</string>
+    <string name="todos_feedback">Feedback</string>
+    <string name="todos_merge_message">Commit message (optional)</string>
+    <string name="todos_cancel_reason">Reason (optional)</string>
+
+    <!-- Automations -->
+    <string name="automations_title">Automations</string>
+    <string name="automations_detail">Automation</string>
+    <string name="automations_new">New automation</string>
+    <string name="automations_create">Create automation</string>
+    <string name="automations_refresh">Refresh automations</string>
+    <string name="automations_empty_title">No automations yet</string>
+    <string name="automations_empty_message">Create a reusable job that runs on a schedule or on demand.</string>
+    <string name="automations_trigger_schedule">Schedule</string>
+    <string name="automations_trigger_manual">Manual</string>
+    <string name="automations_status_running">Running</string>
+    <string name="automations_status_succeeded">Succeeded</string>
+    <string name="automations_status_failed">Failed</string>
+    <string name="automations_status_cancelled">Cancelled</string>
+    <string name="automations_status_skipped">Skipped</string>
+    <string name="automations_status_never">Never run</string>
+    <string name="automations_status_unknown">Unknown</string>
+    <string name="automations_action_launch_session">Launch session</string>
+    <string name="automations_action_enqueue_task">Enqueue task</string>
+    <string name="automations_isolation">Isolation</string>
+    <string name="automations_isolation_worktree">New worktree each run</string>
+    <string name="automations_isolation_shared">Shared in project root</string>
+    <string name="automations_isolation_worktree_short">Worktree</string>
+    <string name="automations_isolation_shared_short">Shared root</string>
+    <string name="automations_cron_hourly">Hourly</string>
+    <string name="automations_cron_daily">Daily at 09:00</string>
+    <string name="automations_cron_weekdays">Weekdays at 09:00</string>
+    <string name="automations_cron_custom">Custom</string>
+    <string name="automations_field_name">Name</string>
+    <string name="automations_field_prompt">Prompt</string>
+    <string name="automations_field_folder">Folder</string>
+    <string name="automations_field_agent">Agent</string>
+    <string name="automations_field_cadence">Cadence</string>
+    <string name="automations_field_cron">Cron (5 fields)</string>
+    <string name="automations_field_branch">Branch (optional)</string>
+    <string name="automations_when_it_fires">When it fires</string>
+    <string name="automations_what_it_does">What it does</string>
+    <string name="automations_timezone">Timezone · %1$s</string>
+    <string name="automations_next_run_absolute">Next run · %1$s</string>
+    <string name="automations_next_run_relative">Next %1$s</string>
+    <string name="automations_now">now</string>
+    <string name="automations_duration_minutes">%1$dm</string>
+    <string name="automations_duration_hours">%1$dh</string>
+    <string name="automations_duration_days">%1$dd</string>
+    <string name="automations_enabled">Enabled</string>
+    <string name="automations_disabled">Disabled</string>
+    <string name="automations_prompt_empty">No prompt captured.</string>
+    <string name="automations_meta_trigger">Trigger</string>
+    <string name="automations_meta_cron">Cron</string>
+    <string name="automations_meta_timezone">Timezone</string>
+    <string name="automations_meta_next_run">Next run</string>
+    <string name="automations_meta_action">Action</string>
+    <string name="automations_run_now">Run now</string>
+    <string name="automations_run_history">Run history</string>
+    <string name="automations_runs_empty">No runs yet.</string>
+    <string name="automations_cancel_run">Cancel run</string>
+    <string name="automations_open_conversation">Open conversation</string>
+    <string name="automations_delete_title">Delete automation</string>
+    <string name="automations_delete_message">This removes the schedule and its run history. In-flight runs are cancelled.</string>
+    <string name="automations_error_name">Name is required</string>
+    <string name="automations_error_prompt">Prompt is required</string>
+    <string name="automations_error_folder">A target folder is required</string>
+    <string name="automations_error_cron">Cron is required for scheduled automations</string>
+    <string name="automations_error_no_server">No server selected</string>
+
+    <!-- Token usage -->
+    <string name="token_usage_title">Token Usage</string>
+    <string name="token_usage_sync">Sync usage</string>
+    <string name="token_usage_refresh">Refresh usage</string>
+    <string name="token_usage_empty_title">No usage data</string>
+    <string name="token_usage_empty_message">Sync agent transcripts to build the usage dashboard.</string>
+    <string name="token_usage_day">Day</string>
+    <string name="token_usage_week">Week</string>
+    <string name="token_usage_month">Month</string>
+    <string name="token_usage_total">Total tokens</string>
+    <string name="token_usage_input">Input</string>
+    <string name="token_usage_output">Output</string>
+    <string name="token_usage_turns">Turns</string>
+    <string name="token_usage_days">Active days</string>
+    <string name="token_usage_trend">Usage trend</string>
+    <string name="token_usage_series_points">%1$d data points</string>
+    <string name="token_usage_by_agent">By agent</string>
+    <string name="token_usage_by_folder">By folder</string>
+    <string name="token_usage_by_model">By model</string>
+    <string name="token_usage_streak">Activity streak</string>
+    <string name="token_usage_streak_value">Current %1$d days · Longest %2$d days</string>
+    <string name="token_usage_top_sessions">Top sessions</string>
+    <string name="token_usage_truncated">The report is capped to the most recent records.</string>
+
+    <!-- Terminal -->
+    <string name="terminal_title">Terminal</string>
+    <string name="terminal_new">New terminal</string>
+    <string name="terminal_empty_title">No terminals</string>
+    <string name="terminal_empty_message">Open a PTY terminal connected to the selected Codeg server.</string>
+    <string name="terminal_refresh">Refresh terminals</string>
+    <string name="terminal_kill">Close terminal</string>
+    <string name="terminal_clear">Clear output</string>
+    <string name="terminal_input">Input</string>
+    <string name="terminal_send">Send input</string>
+    <string name="terminal_working_dir">Working directory</string>
+    <string name="terminal_initial_command">Initial command (optional)</string>
+    <string name="terminal_spawn">Open terminal</string>
 
     <!-- Projects / Folders -->
     <string name="projects_add">Add</string>
@@ -94,6 +307,8 @@
     <string name="search_no_results">No results</string>
     <string name="search_no_results_for">Nothing matched \"%1$s\".</string>
     <string name="search_failed">Search failed</string>
+    <string name="search_filter_all">All</string>
+    <string name="search_no_results_agent">Nothing matched this agent.</string>
 
     <!-- Common -->
     <string name="common_retry">Retry</string>
@@ -602,10 +817,15 @@
 
     <!-- ===== Session Detail · Composer ===== -->
     <string name="compose_insert">Insert</string>
+    <string name="compose_agent_mention">Mention an agent</string>
+    <string name="compose_agent_mention_empty">No available agents</string>
     <string name="compose_attach_image">Attach image</string>
     <string name="compose_message_placeholder">Message</string>
     <string name="compose_stop">Stop</string>
     <string name="compose_send">Send</string>
+    <string name="compose_queue">Queue message</string>
+    <string name="compose_queue_title">Queued · %1$d</string>
+    <string name="compose_queue_remove">Remove queued message</string>
 
     <!-- ===== Session Detail · Ask / Permission / Tool / Plan / Timeline ===== -->
     <string name="ask_needs_input_title">The agent needs your input</string>
@@ -710,6 +930,7 @@
     <string name="sessions_missing_token">Missing token for this server</string>
     <string name="live_cancelled">Cancelled.</string>
     <string name="live_agent_connection_errored">The agent connection errored.</string>
+    <string name="session_attachment_summary">Added %1$d image(s); %2$d skipped (too large or over the limit).</string>
     <string name="files_truncated_note">… file truncated at %1$d lines</string>
 
     <!-- ===== Tool group summary (timeline, pluralized) ===== -->

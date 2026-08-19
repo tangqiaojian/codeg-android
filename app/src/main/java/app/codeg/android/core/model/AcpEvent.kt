@@ -2,6 +2,7 @@ package app.codeg.android.core.model
 
 import app.codeg.android.core.model.wire.arrayOrNull
 import app.codeg.android.core.model.wire.boolOrNull
+import app.codeg.android.core.model.wire.intOrNull
 import app.codeg.android.core.model.wire.longOrNull
 import app.codeg.android.core.model.wire.objectOrNull
 import app.codeg.android.core.model.wire.stringOrNull
@@ -121,6 +122,11 @@ sealed interface AcpEvent {
     data class PlanApprovalResolved(val approvalId: String) : AcpEvent
     /** The agent's live plan / TODO list (display only; does not block the turn). */
     data class PlanUpdate(val entries: List<PlanEntry>) : AcpEvent
+    /** JetBrains AIR typed session-failure upsert (Web `session_failure`). */
+    data class SessionFailure(val record: SessionFailureRecord) : AcpEvent
+    /** Legacy in-flight retry notice; newer adapters emit [SessionFailure] warnings. */
+    data class TurnRetrying(val message: String, val errorStatus: Int? = null) : AcpEvent
+    data class SessionLoadFailed(val sessionId: String, val message: String, val code: String) : AcpEvent
     data class Unknown(val type: String) : AcpEvent
 
     companion object {
@@ -201,6 +207,19 @@ sealed interface AcpEvent {
                 "plan_update" -> PlanUpdate(
                     entries = decodeList(json, obj["entries"], PlanEntry.serializer()),
                 )
+                "session_failure" -> {
+                    val record = obj.objectOrNull("record")?.let(SessionFailureRecord::fromWire)
+                    if (record == null) Unknown(type) else SessionFailure(record)
+                }
+                "turn_retrying" -> TurnRetrying(
+                    message = obj.stringOrNull("message").orEmpty(),
+                    errorStatus = obj.intOrNull("error_status"),
+                )
+                "session_load_failed" -> SessionLoadFailed(
+                    sessionId = obj.stringOrNull("session_id").orEmpty(),
+                    message = obj.stringOrNull("message").orEmpty(),
+                    code = obj.stringOrNull("code").orEmpty(),
+                )
                 else -> Unknown(type)
             }
         }
@@ -258,6 +277,8 @@ data class LiveSessionSnapshot(
     val pendingPermission: PendingPermissionSnapshot?,
     val pendingQuestion: PendingQuestionSnapshot?,
     val pendingPlanApproval: PendingPlanApprovalSnapshot?,
+    val sessionFailures: List<SessionFailureRecord> = emptyList(),
+    val lastError: SessionLastError? = null,
 ) {
     companion object {
         fun fromWire(obj: JsonObject, json: Json): LiveSessionSnapshot =
@@ -279,6 +300,10 @@ data class LiveSessionSnapshot(
                     ?.let { PendingQuestionSnapshot.fromWire(it, json) },
                 pendingPlanApproval = obj.objectOrNull("pending_plan_approval")
                     ?.let(PendingPlanApprovalSnapshot::fromWire),
+                sessionFailures = obj.arrayOrNull("session_failures")
+                    ?.mapNotNull { (it as? JsonObject)?.let(SessionFailureRecord::fromWire) }
+                    .orEmpty(),
+                lastError = obj.objectOrNull("last_error")?.let(SessionLastError::fromWire),
             )
 
         private fun JsonObject.intOrNull(key: String): Int? =
