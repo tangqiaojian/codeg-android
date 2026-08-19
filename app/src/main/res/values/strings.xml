@@ -81,6 +81,12 @@
     <string name="session_changes_title">Changed files</string>
     <string name="session_changes_file_count">%1$d files</string>
     <string name="sessions_search_placeholder">Filter sessions</string>
+    <string name="sessions_filter">List filter</string>
+    <string name="sessions_filter_all">All</string>
+    <string name="sessions_filter_folders">Folders</string>
+    <string name="sessions_filter_chats">Chats</string>
+    <string name="sessions_filter_folders_empty">No folder sessions</string>
+    <string name="sessions_filter_chats_empty">No chats</string>
     <string name="session_find">Find in session</string>
     <string name="session_find_placeholder">Find in messages</string>
     <string name="session_find_previous">Previous match</string>
@@ -823,6 +829,7 @@
     <string name="agentopts_select_branch">Select a branch</string>
 
     <!-- ===== Session Detail · Composer ===== -->
+    <string name="compose_more_actions">More actions</string>
     <string name="compose_insert">Insert</string>
     <string name="compose_agent_mention">Mention an agent</string>
     <string name="compose_agent_mention_empty">No available agents</string>

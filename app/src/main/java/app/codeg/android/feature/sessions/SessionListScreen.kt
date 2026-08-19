@@ -102,7 +102,9 @@ fun SessionListScreen(
     viewModel: SessionListViewModel = hiltViewModel(),
 ) {
     val ui by viewModel.ui.collectAsStateWithLifecycle()
-    val sections by viewModel.sections.collectAsStateWithLifecycle()
+    val grouped by viewModel.grouped.collectAsStateWithLifecycle()
+    val sectionsReady = grouped.scope == ui.scope && grouped.search == ui.search
+    val sections = grouped.sections
     // Collapsed section ids. In the composable (not the VM) so collapsing never
     // re-runs the grouping flow; rememberSaveable keeps the fold state across
     // rotation / process death.
@@ -204,16 +206,40 @@ fun SessionListScreen(
 
                 else -> {
                     Column(Modifier.fillMaxSize()) {
-                        SessionListSearchField(
-                            value = ui.search,
-                            onValueChange = viewModel::onSearchChange,
-                        )
-                        if (sections.isEmpty() && ui.search.isNotBlank()) {
+                        Row(
+                            Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            SessionScopeFilter(
+                                scope = ui.scope,
+                                onChange = viewModel::onScopeChange,
+                            )
+                            SessionListSearchField(
+                                value = ui.search,
+                                onValueChange = viewModel::onSearchChange,
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (sectionsReady && sections.isEmpty() && ui.search.isNotBlank()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 EmptyState(
                                     icon = Icons.Rounded.Search,
                                     title = stringResource(R.string.search_no_results),
                                     message = stringResource(R.string.search_no_results_for, ui.search.trim()),
+                                )
+                            }
+                        } else if (sectionsReady && sections.isEmpty()) {
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                EmptyState(
+                                    icon = if (ui.scope == SessionListScope.CHATS) Icons.Rounded.Forum else Icons.Rounded.Folder,
+                                    title = stringResource(
+                                        when (ui.scope) {
+                                            SessionListScope.CHATS -> R.string.sessions_filter_chats_empty
+                                            SessionListScope.WORKSPACES -> R.string.sessions_filter_folders_empty
+                                            SessionListScope.ALL -> R.string.sessions_empty_title
+                                        },
+                                    ),
+                                    message = stringResource(R.string.sessions_empty_message),
                                 )
                             }
                         } else {
@@ -248,12 +274,62 @@ fun SessionListScreen(
 }
 
 @Composable
-private fun SessionListSearchField(value: String, onValueChange: (String) -> Unit) {
+private fun SessionScopeFilter(scope: SessionListScope, onChange: (SessionListScope) -> Unit) {
+    val colors = CodegTheme.colors
+    var expanded by remember { mutableStateOf(false) }
+    val label = stringResource(
+        when (scope) {
+            SessionListScope.ALL -> R.string.sessions_filter_all
+            SessionListScope.WORKSPACES -> R.string.sessions_filter_folders
+            SessionListScope.CHATS -> R.string.sessions_filter_chats
+        },
+    )
+    Box {
+        TextButton(
+            onClick = { expanded = true },
+            colors = ButtonDefaults.textButtonColors(contentColor = colors.textPrimary),
+            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+        ) {
+            Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1)
+            Icon(Icons.Rounded.ExpandMore, contentDescription = stringResource(R.string.sessions_filter), modifier = Modifier.size(18.dp))
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            SessionListScope.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            stringResource(
+                                when (option) {
+                                    SessionListScope.ALL -> R.string.sessions_filter_all
+                                    SessionListScope.WORKSPACES -> R.string.sessions_filter_folders
+                                    SessionListScope.CHATS -> R.string.sessions_filter_chats
+                                },
+                            ),
+                            color = colors.textPrimary,
+                        )
+                    },
+                    leadingIcon = {
+                        if (option == scope) {
+                            Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
+                        }
+                    },
+                    onClick = {
+                        onChange(option)
+                        expanded = false
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SessionListSearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
     val colors = CodegTheme.colors
     TextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
         placeholder = { Text(stringResource(R.string.sessions_search_placeholder)) },
         leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
         trailingIcon = {

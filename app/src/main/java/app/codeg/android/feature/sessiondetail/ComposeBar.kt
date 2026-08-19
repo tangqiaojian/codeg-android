@@ -26,6 +26,8 @@ import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Image
 import androidx.compose.material.icons.rounded.Stop
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledIconButton
 import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.HorizontalDivider
@@ -47,6 +49,7 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -59,11 +62,9 @@ import app.codeg.android.core.model.findActiveAgentMentionQuery
 
 /**
  * The prompt composer pinned to the bottom of the session detail screen: a
- * multiline text field flanked by an insert ("+"), attach, and send / stop
- * action. The send button morphs between Send and Stop with a Material
- * scale-and-fade transition and an accent↔danger colour tween. All actions are
- * Material [FilledIconButton] / [FilledTonalIconButton]s, so they carry native
- * ripples and 40dp touch targets.
+ * taller multiline field, one overflow button for insert / mention / attach,
+ * and send / stop. The send button morphs between Send and Stop with a Material
+ * scale-and-fade transition and an accent↔danger colour tween.
  */
 @Composable
 fun ComposeBar(
@@ -82,6 +83,7 @@ fun ComposeBar(
     onMentionDeleted: (Int) -> Unit = {},
 ) {
     val colors = CodegTheme.colors
+    var extrasOpen by remember { mutableStateOf(false) }
     var manualMentionPicker by remember { mutableStateOf(false) }
     val detectedMention = findActiveAgentMentionQuery(value.text, value.selection.start)
     val activeMention = detectedMention?.takeUnless { query ->
@@ -109,51 +111,74 @@ fun ComposeBar(
             modifier = Modifier
                 .fillMaxWidth()
                 .background(colors.bgElevated.copy(alpha = 0.92f))
-                .padding(horizontal = 10.dp, vertical = 8.dp),
+                .padding(horizontal = 10.dp, vertical = 10.dp),
             verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            if (onPlus != null) {
-                FilledTonalIconButton(
-                    onClick = onPlus,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = colors.textPrimary.copy(alpha = 0.06f),
-                        contentColor = colors.textSecondary,
-                    ),
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.compose_insert), modifier = Modifier.size(22.dp))
-                }
-            }
-            if (mentionAgents.isNotEmpty()) {
-                FilledTonalIconButton(
-                    onClick = { manualMentionPicker = true },
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = colors.textPrimary.copy(alpha = 0.06f),
-                        contentColor = colors.textSecondary,
-                    ),
-                ) {
-                    Icon(Icons.Rounded.AlternateEmail, contentDescription = stringResource(R.string.compose_agent_mention), modifier = Modifier.size(20.dp))
-                }
-            }
-            if (onAttach != null) {
-                FilledTonalIconButton(
-                    onClick = onAttach,
-                    colors = IconButtonDefaults.filledTonalIconButtonColors(
-                        containerColor = colors.textPrimary.copy(alpha = 0.06f),
-                        contentColor = colors.textSecondary,
-                    ),
-                ) {
-                    Icon(Icons.Rounded.Image, contentDescription = stringResource(R.string.compose_attach_image), modifier = Modifier.size(20.dp))
+            val hasExtras = onPlus != null || mentionAgents.isNotEmpty() || onAttach != null
+            if (hasExtras) {
+                Box {
+                    FilledTonalIconButton(
+                        onClick = { extrasOpen = true },
+                        colors = IconButtonDefaults.filledTonalIconButtonColors(
+                            containerColor = colors.textPrimary.copy(alpha = 0.06f),
+                            contentColor = colors.textSecondary,
+                        ),
+                    ) {
+                        Icon(
+                            Icons.Rounded.Add,
+                            contentDescription = stringResource(R.string.compose_more_actions),
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                    DropdownMenu(expanded = extrasOpen, onDismissRequest = { extrasOpen = false }) {
+                        if (onPlus != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.compose_insert)) },
+                                leadingIcon = { Icon(Icons.Rounded.Add, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    extrasOpen = false
+                                    onPlus()
+                                },
+                            )
+                        }
+                        if (mentionAgents.isNotEmpty()) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.compose_agent_mention)) },
+                                leadingIcon = { Icon(Icons.Rounded.AlternateEmail, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    extrasOpen = false
+                                    val start = value.selection.start.coerceIn(0, value.text.length)
+                                    if (value.text.getOrNull(start - 1) != '@') {
+                                        val prefix = if (start > 0 && !value.text[start - 1].isWhitespace()) " @" else "@"
+                                        val newText = value.text.substring(0, start) + prefix + value.text.substring(start)
+                                        onValueChange(TextFieldValue(newText, TextRange(start + prefix.length)))
+                                    }
+                                    manualMentionPicker = true
+                                },
+                            )
+                        }
+                        if (onAttach != null) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.compose_attach_image)) },
+                                leadingIcon = { Icon(Icons.Rounded.Image, contentDescription = null, modifier = Modifier.size(18.dp)) },
+                                onClick = {
+                                    extrasOpen = false
+                                    onAttach()
+                                },
+                            )
+                        }
+                    }
                 }
             }
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 40.dp)
-                    .background(colors.codeSurface, RoundedCornerShape(20.dp))
-                    .border(0.5.dp, colors.surfaceStroke, RoundedCornerShape(20.dp))
-                    .padding(horizontal = 14.dp, vertical = 9.dp),
-                contentAlignment = Alignment.CenterStart,
+                    .heightIn(min = 56.dp)
+                    .background(colors.codeSurface, RoundedCornerShape(18.dp))
+                    .border(0.5.dp, colors.surfaceStroke, RoundedCornerShape(18.dp))
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                contentAlignment = Alignment.TopStart,
             ) {
                 if (value.text.isEmpty()) {
                     Text(
@@ -165,12 +190,13 @@ fun ComposeBar(
                 BasicTextField(
                     value = value,
                     onValueChange = {
-                        manualMentionPicker = false
+                        if (it.text != value.text) manualMentionPicker = false
                         onValueChange(it)
                     },
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.textPrimary),
                     cursorBrush = SolidColor(colors.accent),
-                    maxLines = 6,
+                    minLines = 2,
+                    maxLines = 8,
                     modifier = Modifier
                         .fillMaxWidth()
                         .onPreviewKeyEvent { event ->

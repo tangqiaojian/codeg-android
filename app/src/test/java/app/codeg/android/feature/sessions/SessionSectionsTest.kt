@@ -33,8 +33,8 @@ class SessionSectionsTest {
         pinnedAt = pinnedAt?.let { Instant.ofEpochSecond(it) },
     )
 
-    private fun folder(id: Int, name: String, sortOrder: Int = 0, color: String = "") =
-        FolderDetail(id = id, name = name, path = "/p/$id", sortOrder = sortOrder, color = color)
+    private fun folder(id: Int, name: String, sortOrder: Int = 0, color: String = "", isChat: Boolean = false) =
+        FolderDetail(id = id, name = name, path = "/p/$id", sortOrder = sortOrder, color = color, isChat = isChat)
 
     @Test
     fun `sections are ordered pinned then folders then other`() {
@@ -213,5 +213,43 @@ class SessionSectionsTest {
 
         assertEquals(listOf(10), repo.rows.map { it.conversation.id })
         assertEquals(listOf(11), repo.rows.single().children.map { it.conversation.id })
+    }
+
+    @Test
+    fun `all scope lists chat folders before workspace folders`() {
+        val folders = listOf(
+            folder(1, "repo", sortOrder = 0),
+            folder(2, "Chat", sortOrder = 5, isChat = true),
+        )
+        val convs = listOf(conv(10, folderId = 1, updated = 1), conv(20, folderId = 2, updated = 2))
+        val sections = buildSessionSections(folders, convs)
+        assertEquals(listOf("folder-2", "folder-1"), sections.map { it.id })
+    }
+
+    @Test
+    fun `chats scope hides workspace folders and their pinned rows`() {
+        val folders = listOf(
+            folder(1, "repo"),
+            folder(2, "Chat", isChat = true),
+        )
+        val convs = listOf(
+            conv(10, folderId = 1, updated = 1, pinnedAt = 9),
+            conv(20, folderId = 2, updated = 2),
+        )
+        val sections = buildSessionSections(folders, convs, scope = SessionListScope.CHATS)
+        assertEquals(listOf("folder-2"), sections.map { it.id })
+        assertEquals(listOf(20), sections.single().rows.map { it.conversation.id })
+    }
+
+    @Test
+    fun `workspaces scope hides chat folders`() {
+        val folders = listOf(
+            folder(1, "repo"),
+            folder(2, "Chat", isChat = true),
+        )
+        val convs = listOf(conv(10, folderId = 1, updated = 1), conv(20, folderId = 2, updated = 2))
+        val sections = buildSessionSections(folders, convs, scope = SessionListScope.WORKSPACES)
+        assertEquals(listOf("folder-1"), sections.map { it.id })
+        assertEquals(listOf(10), sections.single().rows.map { it.conversation.id })
     }
 }

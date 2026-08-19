@@ -57,12 +57,27 @@ class SessionListViewModel @Inject constructor(
      * O(n·log n) grouping runs on [Dispatchers.Default], never on the main thread or
      * during composition, which is what keeps a very large session list smooth.
      */
-    val sections: StateFlow<List<SessionSection>> =
+    val grouped: StateFlow<GroupedSessions> =
         _ui
-            .map { GroupingInput(it.folders, it.conversations, it.search) }
+            .map { GroupingInput(it.folders, it.conversations, it.search, it.scope) }
             .distinctUntilChanged()
-            .map { buildSessionSections(it.folders, it.conversations, it.search) }
+            .map {
+                GroupedSessions(
+                    search = it.search,
+                    scope = it.scope,
+                    sections = buildSessionSections(it.folders, it.conversations, it.search, it.scope),
+                )
+            }
             .flowOn(Dispatchers.Default)
+            .stateIn(
+                viewModelScope,
+                SharingStarted.WhileSubscribed(5_000),
+                GroupedSessions(),
+            )
+
+    val sections: StateFlow<List<SessionSection>> =
+        grouped
+            .map { it.sections }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     /** The only [_ui] fields the grouping depends on, so spinner/error toggles don't re-sort. */
@@ -70,6 +85,7 @@ class SessionListViewModel @Inject constructor(
         val folders: List<FolderDetail>,
         val conversations: List<ConversationSummary>,
         val search: String,
+        val scope: SessionListScope,
     )
 
     private var client: CodegClient? = null
@@ -173,13 +189,23 @@ class SessionListViewModel @Inject constructor(
     fun dismissError() = _ui.update { it.copy(error = null) }
 
     fun onSearchChange(value: String) = _ui.update { it.copy(search = value) }
+
+    fun onScopeChange(value: SessionListScope) = _ui.update { it.copy(scope = value) }
 }
+
+/** One grouping pass: [sections] always belong to this [search] + [scope]. */
+data class GroupedSessions(
+    val search: String = "",
+    val scope: SessionListScope = SessionListScope.ALL,
+    val sections: List<SessionSection> = emptyList(),
+)
 
 /** Raw list state; the grouped display is derived by [SessionGrouping]. */
 data class SessionListUiState(
     val folders: List<FolderDetail> = emptyList(),
     val conversations: List<ConversationSummary> = emptyList(),
     val search: String = "",
+    val scope: SessionListScope = SessionListScope.ALL,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val hasLoaded: Boolean = false,

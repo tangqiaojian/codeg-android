@@ -81,6 +81,12 @@
     <string name="session_changes_title">改动文件</string>
     <string name="session_changes_file_count">%1$d 个文件</string>
     <string name="sessions_search_placeholder">筛选会话</string>
+    <string name="sessions_filter">列表筛选</string>
+    <string name="sessions_filter_all">全部</string>
+    <string name="sessions_filter_folders">文件夹</string>
+    <string name="sessions_filter_chats">聊天</string>
+    <string name="sessions_filter_folders_empty">没有文件夹会话</string>
+    <string name="sessions_filter_chats_empty">没有聊天</string>
     <string name="session_find">在会话中查找</string>
     <string name="session_find_placeholder">查找消息</string>
     <string name="session_find_previous">上一个匹配</string>
@@ -823,6 +829,7 @@
     <string name="agentopts_select_branch">选择分支</string>
 
     <!-- ===== Session Detail · Composer ===== -->
+    <string name="compose_more_actions">更多操作</string>
     <string name="compose_insert">插入</string>
     <string name="compose_agent_mention">提及智能体</string>
     <string name="compose_agent_mention_empty">没有可用的智能体</string>
