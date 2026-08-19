@@ -95,6 +95,7 @@ class SearchViewModel @Inject constructor(
                 search = q.takeIf { it.isNotEmpty() },
                 sortBy = "updated",
                 agentType = agent?.wire,
+                includeChildren = true,
             )
             _ui.update { it.copy(results = results, searching = false) }
             if (q.isNotEmpty()) recentStore.add(q)

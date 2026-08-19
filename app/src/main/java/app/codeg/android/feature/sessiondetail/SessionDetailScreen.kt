@@ -36,10 +36,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ArrowDownward
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.UnfoldMore
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -128,6 +130,7 @@ fun SessionDetailScreen(
     var composerValue by remember { mutableStateOf(TextFieldValue("")) }
     var showInsert by remember { mutableStateOf(false) }
     var showOptions by remember { mutableStateOf(false) }
+    var showFolderPicker by remember { mutableStateOf(false) }
     var findOpen by remember { mutableStateOf(false) }
     var findQuery by remember { mutableStateOf("") }
     var findIndex by remember { mutableStateOf(0) }
@@ -151,6 +154,10 @@ fun SessionDetailScreen(
         viewModel = viewModel,
         onOpenSession = onOpenSession,
         onDismiss = { showOptions = false },
+    )
+    if (showFolderPicker) FolderPickerSheet(
+        viewModel = viewModel,
+        onDismiss = { showFolderPicker = false },
     )
     val pickImages = rememberLauncherForActivityResult(
         ActivityResultContracts.PickMultipleVisualMedia(AttachmentPrep.MAX_COUNT),
@@ -201,9 +208,25 @@ fun SessionDetailScreen(
     LaunchedEffect(ui.pendingUserTurns.lastOrNull()?.id) {
         if (ui.pendingUserTurns.isNotEmpty()) stick = true
     }
+    val timelineBottomIndex = remember(
+        nodes.size,
+        ui.relatedTask,
+        ui.taskChangedFiles,
+        ui.gitChanges,
+        ui.transcriptWindow?.hasOlder,
+    ) {
+        var index = 0
+        if (ui.relatedTask != null || ui.taskChangedFiles.isNotEmpty() || ui.gitChanges.isNotEmpty()) index++
+        if (ui.transcriptWindow?.hasOlder == true) index++
+        index + nodes.size // spacer sits at this index
+    }
     // Follow new / streamed content while pinned.
-    LaunchedEffect(nodes.size, ui.live, stick) {
-        if (stick && nodes.isNotEmpty()) listState.scrollToItem(nodes.size)
+    LaunchedEffect(timelineBottomIndex, ui.live, stick) {
+        if (stick && nodes.isNotEmpty()) listState.scrollToItem(timelineBottomIndex)
+    }
+    // Prepending older history must not yank the viewport to the live tail.
+    LaunchedEffect(ui.olderTurnsPrependEpoch) {
+        if (ui.olderTurnsPrependEpoch > 0) stick = false
     }
     val scrollToId: (String) -> Unit = remember(nodes) {
         { id ->
@@ -434,15 +457,32 @@ fun SessionDetailScreen(
 
                     !hasContent ->
                         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            EmptyState(
-                                icon = Icons.Rounded.Forum,
-                                title = if (ui.isNew) {
-                                    stringResource(R.string.session_new_task)
-                                } else {
-                                    stringResource(R.string.session_empty_title)
-                                },
-                                message = stringResource(R.string.session_empty_message),
-                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(16.dp),
+                                modifier = Modifier.padding(horizontal = 24.dp),
+                            ) {
+                                if (ui.isNew) {
+                                    WorkspaceDraftCard(
+                                        folderName = ui.folderName,
+                                        folderPath = ui.folderPath,
+                                        onClick = { showFolderPicker = true },
+                                    )
+                                }
+                                EmptyState(
+                                    icon = Icons.Rounded.Forum,
+                                    title = if (ui.isNew) {
+                                        stringResource(R.string.session_new_task)
+                                    } else {
+                                        stringResource(R.string.session_empty_title)
+                                    },
+                                    message = if (ui.isNew) {
+                                        stringResource(R.string.session_pick_workspace_hint)
+                                    } else {
+                                        stringResource(R.string.session_empty_message)
+                                    },
+                                )
+                            }
                         }
 
                     else -> CompositionLocalProvider(
@@ -466,6 +506,27 @@ fun SessionDetailScreen(
                                         onOpenFile = { path, fromTask -> viewModel.loadFileDiff(path, fromTask) },
                                         modifier = Modifier.padding(bottom = 10.dp),
                                     )
+                                }
+                            }
+                            if (ui.transcriptWindow?.hasOlder == true) {
+                                item(key = "load-older", contentType = "load-older") {
+                                    TextButton(
+                                        onClick = viewModel::loadOlderTurns,
+                                        enabled = !ui.loadingOlderTurns,
+                                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                if (ui.loadingOlderTurns) {
+                                                    R.string.session_loading_earlier
+                                                } else {
+                                                    R.string.session_load_earlier
+                                                },
+                                            ),
+                                            color = colors.accent,
+                                            fontSize = 13.sp,
+                                        )
+                                    }
                                 }
                             }
                             items(nodes, key = { it.id }, contentType = { it.contentTypeKey }) { node ->
@@ -496,7 +557,7 @@ fun SessionDetailScreen(
                     ) {
                         JumpToLatestButton {
                             stick = true
-                            scope.launch { listState.animateScrollToItem(nodes.size) }
+                            scope.launch { listState.animateScrollToItem(timelineBottomIndex) }
                         }
                     }
                 }
@@ -539,6 +600,53 @@ fun SessionDetailScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WorkspaceDraftCard(
+    folderName: String?,
+    folderPath: String?,
+    onClick: () -> Unit,
+) {
+    val colors = CodegTheme.colors
+    GlassCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        padding = 14.dp,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Icon(Icons.Rounded.Folder, contentDescription = null, tint = colors.accent)
+            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    stringResource(R.string.session_pick_workspace),
+                    fontSize = 11.sp,
+                    color = colors.textTertiary,
+                )
+                Text(
+                    folderName ?: stringResource(R.string.agentopts_choose_folder),
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                if (folderPath != null) {
+                    Text(
+                        folderPath,
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace,
+                        color = colors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            Icon(Icons.Rounded.UnfoldMore, contentDescription = null, tint = colors.textTertiary)
         }
     }
 }

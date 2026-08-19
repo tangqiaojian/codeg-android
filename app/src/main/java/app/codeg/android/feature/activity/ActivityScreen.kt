@@ -36,6 +36,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.component.EmptyState
+import app.codeg.android.core.designsystem.component.InlineError
 import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.feature.sessions.CollapsibleSectionHeader
@@ -73,6 +74,17 @@ fun ActivityScreen(
             when {
                 ui.loading && !ui.hasLoaded ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { LoadingView(stringResource(R.string.common_loading)) }
+
+                !ui.hasLoaded && ui.error != null ->
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        InlineError(
+                            icon = Icons.Rounded.History,
+                            title = stringResource(R.string.sessions_load_failed),
+                            message = ui.error!!,
+                            onRetry = viewModel::refresh,
+                            retryLabel = stringResource(R.string.common_retry),
+                        )
+                    }
 
                 ui.hasLoaded && ui.isEmptyFeed ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

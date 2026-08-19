@@ -124,7 +124,7 @@ class SessionListViewModel @Inject constructor(
         }
         try {
             val result = coroutineScope {
-                val folders = async { active.listFolders() }
+                val folders = async { runCatching { active.listFolders() }.getOrDefault(emptyList()) }
                 val conversations = async { active.listConversations(includeChildren = true) }
                 folders.await() to conversations.await()
             }

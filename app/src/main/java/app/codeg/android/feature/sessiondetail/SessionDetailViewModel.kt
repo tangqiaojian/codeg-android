@@ -22,10 +22,13 @@ import app.codeg.android.core.model.QuickMessage
 import android.content.ContentResolver
 import android.net.Uri
 import app.codeg.android.core.model.ConversationConnectionInfo
+import app.codeg.android.core.model.ConversationDetail
 import app.codeg.android.core.model.ConversationStatus
 import app.codeg.android.core.model.ConversationSummary
+import app.codeg.android.core.model.DirectoryEntry
 import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.core.model.FolderVisibility
+import app.codeg.android.core.model.TranscriptWindow
 import app.codeg.android.core.model.GitBranchList
 import app.codeg.android.core.model.GitStatusEntry
 import app.codeg.android.core.model.MessageTurn
@@ -95,7 +98,7 @@ private const val RECONCILE_ATTEMPTS = 6
 class SessionDetailViewModel @Inject constructor(
     private val repository: ServerRepository,
     private val selectorPrefs: SelectorPrefsStore,
-    savedStateHandle: SavedStateHandle,
+    private val savedStateHandle: SavedStateHandle,
     @ApplicationContext private val appContext: Context,
 ) : ViewModel() {
 
@@ -179,6 +182,7 @@ class SessionDetailViewModel @Inject constructor(
                             loading = false,
                             summary = detail.summary,
                             turns = detail.turns,
+                            transcriptWindow = TranscriptWindow.from(detail),
                             sessionStats = detail.sessionStats,
                             agent = detail.summary.agentType,
                             folderName = folder?.let { f -> FolderVisibility.displayName(f, allFolders) },
@@ -223,7 +227,7 @@ class SessionDetailViewModel @Inject constructor(
                             selectedFolderId = folder?.id,
                             currentBranch = currentBranch,
                             isDraftEditable = true,
-                            availableFolders = topLevel,
+                            availableFolders = open,
                             availableAgents = agents,
                             availableMentionAgents = mentionAgents,
                         )
@@ -405,6 +409,7 @@ class SessionDetailViewModel @Inject constructor(
         val f = folder ?: throw IllegalStateException("No folder available to start a task")
         val id = c.createConversation(f.id, agent, title = firstPrompt.take(60))
         conversationId = id
+        savedStateHandle["id"] = id
         _ui.update { it.copy(isNew = false) }
     }
 
@@ -600,8 +605,8 @@ class SessionDetailViewModel @Inject constructor(
             is AcpEvent.UsageUpdate -> _ui.update {
                 it.copy(
                     sessionStats = (it.sessionStats ?: SessionStats()).copy(
-                        contextWindowUsedTokens = event.used.toInt(),
-                        contextWindowMaxTokens = event.size.toInt(),
+                        contextWindowUsedTokens = event.used.toLong(),
+                        contextWindowMaxTokens = event.size.toLong(),
                     ),
                 )
             }
@@ -839,11 +844,7 @@ class SessionDetailViewModel @Inject constructor(
         val c = client ?: return
         val id = conversationId ?: return
         viewModelScope.launch {
-            runCatching { c.conversationDetail(id) }.getOrNull()?.let { d ->
-                _ui.update {
-                    it.copy(turns = d.turns, sessionStats = d.sessionStats ?: it.sessionStats, summary = d.summary)
-                }
-            }
+            refetchConversation()?.let { d -> applyTranscript(d) }
         }
     }
 
@@ -972,9 +973,11 @@ class SessionDetailViewModel @Inject constructor(
             repeat(5) { attempt ->
                 delay(if (attempt == 0) 300 else 600)
                 if (liveBuilder !== builder) return@launch
-                val detail = runCatching { c.conversationDetail(id) }.getOrNull() ?: return@repeat
+                val detail = refetchConversation() ?: return@repeat
                 val last = detail.turns.lastOrNull()
-                val advanced = detail.turns.size > turnBaseline &&
+                val previousTotal = _ui.value.transcriptWindow?.turnsTotal ?: turnBaseline
+                val newTotal = detail.turnsTotal ?: detail.turns.size
+                val advanced = newTotal > previousTotal &&
                     last?.role == TurnRole.ASSISTANT && last.blocks.isNotEmpty()
                 if (advanced) {
                     if (liveBuilder !== builder) return@launch
@@ -987,6 +990,7 @@ class SessionDetailViewModel @Inject constructor(
                     _ui.update {
                         it.copy(
                             turns = detail.turns,
+                            transcriptWindow = TranscriptWindow.from(detail),
                             sessionStats = detail.sessionStats ?: it.sessionStats,
                             summary = detail.summary,
                             pendingUserTurns = emptyList(),
@@ -1393,9 +1397,117 @@ class SessionDetailViewModel @Inject constructor(
         _ui.update {
             it.copy(
                 folderName = FolderVisibility.displayName(newFolder, allFolders),
+                folderBreadcrumb = FolderVisibility.breadcrumb(newFolder, allFolders),
                 folderPath = newFolder.path,
                 selectedFolderId = newFolder.id,
                 currentBranch = newFolder.gitBranch,
+            )
+        }
+    }
+
+    /** Register [path] as an open folder and select it as the draft working dir. */
+    fun openWorkspacePath(path: String, onDone: (String?) -> Unit) {
+        if (!_ui.value.isDraftEditable) {
+            onDone(null)
+            return
+        }
+        val c = client
+        if (c == null) {
+            onDone(appContext.getString(R.string.sessions_missing_token))
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val opened = c.openFolder(path)
+                allFolders = allFolders.filterNot { it.id == opened.id } + opened
+                folder = opened
+                currentBranch = opened.gitBranch
+                connectionId = null
+                _ui.update {
+                    val available = (it.availableFolders.filterNot { f -> f.id == opened.id } + opened)
+                    it.copy(
+                        folderName = FolderVisibility.displayName(opened, allFolders),
+                        folderBreadcrumb = FolderVisibility.breadcrumb(opened, allFolders),
+                        folderPath = opened.path,
+                        selectedFolderId = opened.id,
+                        currentBranch = opened.gitBranch,
+                        availableFolders = available,
+                    )
+                }
+                onDone(null)
+            } catch (e: Exception) {
+                val message = e.displayMessage()
+                _ui.update { it.copy(notice = message) }
+                onDone(message)
+            }
+        }
+    }
+
+    suspend fun loadHomeDirectory(): String = client?.getHomeDirectory().orEmpty()
+
+    suspend fun listWorkspaceDirs(path: String): List<DirectoryEntry> =
+        client?.listDirectoryEntries(path) ?: emptyList()
+
+    /** Page older history in when the current transcript is a tail window. */
+    fun loadOlderTurns() {
+        val window = _ui.value.transcriptWindow ?: return
+        if (!window.hasOlder || _ui.value.loadingOlderTurns) return
+        val c = client ?: return
+        val id = conversationId ?: return
+        _ui.update { it.copy(loadingOlderTurns = true) }
+        viewModelScope.launch {
+            try {
+                val page = c.conversationTurns(id, window.turnsOffset)
+                val merged = window.prepend(page)
+                if (merged != null) {
+                    _ui.update {
+                        it.copy(
+                            turns = merged.turns,
+                            transcriptWindow = merged,
+                            loadingOlderTurns = false,
+                            olderTurnsPrependEpoch = it.olderTurnsPrependEpoch + 1,
+                        )
+                    }
+                } else {
+                    _ui.update { it.copy(loadingOlderTurns = false) }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _ui.update { it.copy(loadingOlderTurns = false, notice = e.displayMessage()) }
+            }
+        }
+    }
+
+    /**
+     * Refetch the live window when we already have one (same offset + seam hash),
+     * otherwise the recent tail. Mirrors the web client's refetchDetail.
+     */
+    private suspend fun refetchConversation(): ConversationDetail? {
+        val c = client ?: return null
+        val id = conversationId ?: return null
+        val window = _ui.value.transcriptWindow
+        if (window == null) {
+            return runCatching { c.conversationDetail(id) }.getOrNull()
+        }
+        val sliced = runCatching {
+            c.conversationDetail(id, tailTurns = null, fromIndex = window.turnsOffset)
+        }.getOrNull()
+        val slicedWindow = sliced?.let { TranscriptWindow.from(it) }
+        val seamHolds = slicedWindow != null &&
+            slicedWindow.turnsOffset == window.turnsOffset &&
+            slicedWindow.prefixHash == window.prefixHash &&
+            slicedWindow.turnsTotal >= window.turnsOffset
+        return if (seamHolds) sliced else runCatching { c.conversationDetail(id) }.getOrNull()
+    }
+
+    private fun applyTranscript(detail: ConversationDetail) {
+        _ui.update {
+            it.copy(
+                turns = detail.turns,
+                transcriptWindow = TranscriptWindow.from(detail),
+                sessionStats = detail.sessionStats ?: it.sessionStats,
+                summary = detail.summary,
             )
         }
     }
@@ -1744,6 +1856,9 @@ data class SessionDetailUiState(
     val availableAgents: List<AgentType> = emptyList(),
     val availableMentionAgents: List<AcpAgentInfo> = emptyList(),
     val turns: List<MessageTurn> = emptyList(),
+    val transcriptWindow: TranscriptWindow? = null,
+    val loadingOlderTurns: Boolean = false,
+    val olderTurnsPrependEpoch: Int = 0,
     val pendingUserTurns: List<MessageTurn> = emptyList(),
     val live: LiveTurnState? = null,
     /** The live turn was rebuilt from a reattach snapshot (owns the in-flight reply). */

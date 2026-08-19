@@ -142,6 +142,22 @@ data class ListChildConversationsBody(
 @Serializable
 data class ConversationIdBody(val conversationId: Int)
 
+/** Body for `get_folder_conversation`. `tailTurns` and `fromIndex` are mutually exclusive. */
+@Serializable
+data class GetFolderConversationBody(
+    val conversationId: Int,
+    val tailTurns: Int? = null,
+    val fromIndex: Int? = null,
+)
+
+/** Body for `get_folder_conversation_turns` (older-history page). */
+@Serializable
+data class GetFolderConversationTurnsBody(
+    val conversationId: Int,
+    val beforeIndex: Int,
+    val limit: Int,
+)
+
 @Serializable
 data class CreateConversationBody(
     val folderId: Int,

@@ -61,6 +61,10 @@
     <string name="session_load_failed">Couldn\'t load this session</string>
     <string name="session_empty_title">No messages yet</string>
     <string name="session_empty_message">Messages in this session will appear here.</string>
+    <string name="session_load_earlier">Load earlier messages</string>
+    <string name="session_loading_earlier">Loading earlier messages…</string>
+    <string name="session_pick_workspace">Working directory</string>
+    <string name="session_pick_workspace_hint">Tap to choose the folder this session works in. You can search open projects or browse the server filesystem.</string>
     <string name="session_jump_to_latest">Jump to latest</string>
     <string name="session_agent_options">Agent options</string>
     <string name="sessions_collapse">Collapse</string>
@@ -811,6 +815,9 @@
     <string name="agentopts_workspace">WORKSPACE</string>
     <string name="agentopts_busy">Options can\'t be changed while the agent is responding.</string>
     <string name="agentopts_choose_folder">Choose a folder</string>
+    <string name="agentopts_change_workspace">Choose working directory</string>
+    <string name="agentopts_search_folders">Search folders</string>
+    <string name="agentopts_browse_folder">Browse server filesystem</string>
     <string name="agentopts_folder_readonly">Folder is fixed for this session</string>
     <string name="agentopts_branch">Branch</string>
     <string name="agentopts_select_branch">Select a branch</string>

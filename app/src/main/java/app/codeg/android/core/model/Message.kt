@@ -1,6 +1,8 @@
 package app.codeg.android.core.model
 
 import app.codeg.android.core.model.wire.InstantSerializer
+import app.codeg.android.core.model.wire.arrayOrNull
+import app.codeg.android.core.model.wire.asObjectOrNull
 import app.codeg.android.core.model.wire.nonEmptyString
 import app.codeg.android.core.model.wire.objectOrNull
 import app.codeg.android.core.model.wire.stringOrNull
@@ -43,15 +45,15 @@ enum class TurnRole(val wire: String) {
     }
 }
 
-/** Token usage for a single turn (Rust `TurnUsage`). */
+/** Token usage for a single turn (Rust `TurnUsage`). Counts are u64 on the wire. */
 @Serializable
 data class TurnUsage(
-    val inputTokens: Int = 0,
-    val outputTokens: Int = 0,
-    val cacheCreationInputTokens: Int = 0,
-    val cacheReadInputTokens: Int = 0,
+    val inputTokens: Long = 0,
+    val outputTokens: Long = 0,
+    val cacheCreationInputTokens: Long = 0,
+    val cacheReadInputTokens: Long = 0,
 ) {
-    val total: Int
+    val total: Long
         get() = inputTokens + outputTokens + cacheCreationInputTokens + cacheReadInputTokens
 }
 
@@ -89,7 +91,12 @@ sealed interface ContentBlock {
         val inputPreview: String?,
         val meta: JsonObject? = null,
     ) : ContentBlock
-    data class ToolResult(val id: String?, val outputPreview: String?, val isError: Boolean) : ContentBlock
+    data class ToolResult(
+        val id: String?,
+        val outputPreview: String?,
+        val isError: Boolean,
+        val images: List<ImageData> = emptyList(),
+    ) : ContentBlock
     data class Unknown(val type: String) : ContentBlock
 
     companion object {
@@ -124,6 +131,16 @@ sealed interface ContentBlock {
                     id = obj.stringOrNull("tool_use_id"),
                     outputPreview = obj.stringOrNull("output_preview"),
                     isError = obj.boolOrNull("is_error") ?: false,
+                    images = obj.arrayOrNull("images")?.mapNotNull { el ->
+                        val o = el.asObjectOrNull() ?: return@mapNotNull null
+                        val data = o.stringOrNull("data").orEmpty()
+                        if (data.isEmpty()) null
+                        else ImageData(
+                            data = data,
+                            mimeType = o.stringOrNull("mime_type") ?: "image/png",
+                            uri = o.stringOrNull("uri"),
+                        )
+                    }.orEmpty(),
                 )
                 else -> Unknown(type)
             }
@@ -155,7 +172,7 @@ data class MessageTurn(
     @Serializable(with = InstantSerializer::class)
     val timestamp: Instant,
     val usage: TurnUsage? = null,
-    val durationMs: Int? = null,
+    val durationMs: Long? = null,
     val model: String? = null,
     @Serializable(with = InstantSerializer::class)
     val completedAt: Instant? = null,

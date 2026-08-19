@@ -95,7 +95,7 @@ class ActivityViewModel @Inject constructor(
         val c = client ?: return
         if (manual) _ui.update { it.copy(refreshing = true) }
         try {
-            val conversations = c.listConversations(sortBy = "updated")
+            val conversations = c.listConversations(sortBy = "updated", includeChildren = true)
             if (_ui.value.folderNames.isEmpty()) {
                 val folders = runCatching { c.listFolders() }.getOrDefault(emptyList())
                 _ui.update { it.copy(folderNames = folders.associate { f -> f.id to f.name }) }
@@ -104,7 +104,7 @@ class ActivityViewModel @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            _ui.update { it.copy(loading = false, refreshing = false, error = if (it.hasLoaded) it.error else e.displayMessage()) }
+            _ui.update { it.copy(loading = false, refreshing = false, error = e.displayMessage()) }
         }
     }
 }

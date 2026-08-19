@@ -2,11 +2,17 @@ package app.codeg.android.core.network
 
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ConnectBody
+import app.codeg.android.core.model.ContentBlock
+import app.codeg.android.core.model.ConversationDetail
 import app.codeg.android.core.model.ConversationStatus
 import app.codeg.android.core.model.ConversationSummary
+import app.codeg.android.core.model.ConversationTurnsPage
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.GetFolderConversationBody
+import app.codeg.android.core.model.GetFolderConversationTurnsBody
 import app.codeg.android.core.model.ListConversationsBody
 import app.codeg.android.core.model.QuestionAnswer
+import app.codeg.android.core.model.TurnRole
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.encodeToString
@@ -102,5 +108,92 @@ class CodegJsonTest {
     @Test
     fun `bare JSON integer decodes (create_conversation)`() {
         assertEquals(42, CodegJson.response.decodeFromString(Int.serializer(), "42"))
+    }
+
+    @Test
+    fun `get_folder_conversation request encodes tailTurns`() {
+        val json = CodegJson.request.encodeToString(
+            GetFolderConversationBody(conversationId = 9, tailTurns = 120),
+        )
+        assertTrue(json.contains("\"conversationId\":9"))
+        assertTrue(json.contains("\"tailTurns\":120"))
+        assertFalse(json.contains("fromIndex"))
+    }
+
+    @Test
+    fun `get_folder_conversation_turns request encodes beforeIndex`() {
+        val json = CodegJson.request.encodeToString(
+            GetFolderConversationTurnsBody(conversationId = 9, beforeIndex = 40, limit = 120),
+        )
+        assertTrue(json.contains("\"conversationId\":9"))
+        assertTrue(json.contains("\"beforeIndex\":40"))
+        assertTrue(json.contains("\"limit\":120"))
+    }
+
+    @Test
+    fun `windowed conversation detail decodes recent turns and paging metadata`() {
+        val detail = CodegJson.response.decodeFromString<ConversationDetail>(
+            """{"summary":{"id":7,"folder_id":2,"title":"Fix auth","agent_type":"grok",
+               "status":"completed","message_count":50,"kind":"regular","title_locked":true,
+               "created_at":"2024-01-02T03:04:05Z","updated_at":"2024-01-02T03:04:06Z"},
+               "turns":[{"id":"t-40","role":"user","blocks":[{"type":"text","text":"hello"}],
+               "timestamp":"2024-01-02T03:04:05Z"}],
+               "turns_offset":40,"turns_total":50,"assistant_turns_before_offset":18,
+               "prefix_hash":"cbf29ce484222325"}""",
+        )
+        assertEquals(1, detail.turns.size)
+        assertEquals("hello", (detail.turns.single().blocks.single() as ContentBlock.Text).text)
+        assertEquals(40, detail.turnsOffset)
+        assertEquals(50, detail.turnsTotal)
+        assertEquals(18, detail.assistantTurnsBeforeOffset)
+        assertEquals("cbf29ce484222325", detail.prefixHash)
+        assertEquals(TurnRole.USER, detail.turns.single().role)
+    }
+
+    @Test
+    fun `older turns page decodes prepend payload`() {
+        val page = CodegJson.response.decodeFromString<ConversationTurnsPage>(
+            """{"turns":[{"id":"t-20","role":"assistant","blocks":[{"type":"text","text":"earlier"}],
+               "timestamp":"2024-01-02T03:04:01Z"}],
+               "turns_offset":20,"turns_total":50,"assistant_turns_before_offset":8,
+               "prefix_hash":"aaaaaaaaaaaaaaaa","prefix_hash_before_index":"cbf29ce484222325"}""",
+        )
+        assertEquals(20, page.turnsOffset)
+        assertEquals("aaaaaaaaaaaaaaaa", page.prefixHash)
+        assertEquals("cbf29ce484222325", page.prefixHashBeforeIndex)
+        assertEquals("earlier", (page.turns.single().blocks.single() as ContentBlock.Text).text)
+    }
+
+    @Test
+    fun `turn usage and duration decode u64 values that overflow Int`() {
+        val detail = CodegJson.response.decodeFromString<ConversationDetail>(
+            """{"summary":{"id":1,"folder_id":1,"agent_type":"codex","status":"completed",
+               "message_count":1,"created_at":"2024-01-02T03:04:05Z","updated_at":"2024-01-02T03:04:06Z"},
+               "session_stats":{"total_tokens":3000000000,"total_duration_ms":3000000000},
+               "turns":[{"id":"t1","role":"assistant","blocks":[{"type":"text","text":"ok"}],
+               "timestamp":"2024-01-02T03:04:05Z",
+               "usage":{"input_tokens":2500000000,"output_tokens":1,
+               "cache_creation_input_tokens":0,"cache_read_input_tokens":0},
+               "duration_ms":3000000000}]}""",
+        )
+        assertEquals(3_000_000_000L, detail.sessionStats?.totalDurationMs)
+        assertEquals(2_500_000_000L, detail.turns.single().usage?.inputTokens)
+        assertEquals(3_000_000_000L, detail.turns.single().durationMs)
+    }
+
+    @Test
+    fun `tool_result images decode from historical transcripts`() {
+        val detail = CodegJson.response.decodeFromString<ConversationDetail>(
+            """{"summary":{"id":1,"folder_id":1,"agent_type":"claude_code","status":"completed",
+               "message_count":1,"created_at":"2024-01-02T03:04:05Z","updated_at":"2024-01-02T03:04:06Z"},
+               "turns":[{"id":"t1","role":"assistant","timestamp":"2024-01-02T03:04:05Z","blocks":[
+                 {"type":"tool_use","tool_use_id":"r1","tool_name":"Read","input_preview":"{}"},
+                 {"type":"tool_result","tool_use_id":"r1","output_preview":"image",
+                  "is_error":false,"images":[{"data":"abc","mime_type":"image/png"}]}
+               ]}]}""",
+        )
+        val result = detail.turns.single().blocks[1] as ContentBlock.ToolResult
+        assertEquals("abc", result.images.single().data)
+        assertEquals("image/png", result.images.single().mimeType)
     }
 }

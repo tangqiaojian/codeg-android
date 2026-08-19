@@ -48,10 +48,10 @@ data class ConversationSummary(
 @Serializable
 data class SessionStats(
     val totalUsage: TurnUsage? = null,
-    val totalTokens: Int? = null,
-    val totalDurationMs: Int = 0,
-    val contextWindowUsedTokens: Int? = null,
-    val contextWindowMaxTokens: Int? = null,
+    val totalTokens: Long? = null,
+    val totalDurationMs: Long = 0,
+    val contextWindowUsedTokens: Long? = null,
+    val contextWindowMaxTokens: Long? = null,
     val contextWindowUsagePercent: Double? = null,
 )
 
@@ -59,6 +59,10 @@ data class SessionStats(
  * Full session detail incl. message history (Rust `DbConversationDetail`).
  * Decode-only. [turns] uses the hand-written `ContentBlock` serializer for its
  * polymorphic blocks.
+ *
+ * Window fields (`turnsOffset` / `turnsTotal` / `prefixHash`) are present only
+ * when the request asked for a tail (`tailTurns`) or a `fromIndex` slice.
+ * Their absence means a legacy full response.
  */
 @Serializable
 data class ConversationDetail(
@@ -66,7 +70,33 @@ data class ConversationDetail(
     val turns: List<MessageTurn> = emptyList(),
     val sessionStats: SessionStats? = null,
     val inFlightUserTurnId: String? = null,
+    val turnsOffset: Int? = null,
+    val turnsTotal: Int? = null,
+    val assistantTurnsBeforeOffset: Int? = null,
+    val prefixHash: String? = null,
+    @Serializable(with = InstantSerializer::class)
+    val uncoveredPrefixMaxTs: Instant? = null,
 )
+
+/**
+ * One page of older history (`get_folder_conversation_turns`):
+ * `full[turnsOffset until turnsOffset + turns.size)`, ending just before
+ * the `beforeIndex` the client asked for.
+ */
+@Serializable
+data class ConversationTurnsPage(
+    val turns: List<MessageTurn> = emptyList(),
+    val turnsOffset: Int = 0,
+    val turnsTotal: Int = 0,
+    val assistantTurnsBeforeOffset: Int = 0,
+    val prefixHash: String = "",
+    val prefixHashBeforeIndex: String = "",
+    @Serializable(with = InstantSerializer::class)
+    val uncoveredPrefixMaxTs: Instant? = null,
+)
+
+/** Default recent-window size, matching the web client's `tailTurns: 120`. */
+const val CONVERSATION_TAIL_TURNS = 120
 
 /** Returned by `acp_find_connection_for_conversation` when a live ACP
  * connection already owns a conversation. */

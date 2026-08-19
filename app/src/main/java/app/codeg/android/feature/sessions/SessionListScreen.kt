@@ -381,17 +381,19 @@ private fun LazyListScope.sessionSectionItems(
                 onTogglePin = onTogglePin,
             )
         }
-        section.nested.forEach { child ->
-            sessionSectionItems(
-                section = child,
-                collapsed = collapsed,
-                collapsedChildren = collapsedChildren,
-                onToggleSection = onToggleSection,
-                onToggleChildren = onToggleChildren,
-                onOpenConversation = onOpenConversation,
-                onTogglePin = onTogglePin,
-            )
-        }
+    }
+    // Worktree groups stay visible when the workspace header is collapsed so
+    // nested history is not wiped by a single tap on the root card.
+    section.nested.forEach { child ->
+        sessionSectionItems(
+            section = child,
+            collapsed = collapsed,
+            collapsedChildren = collapsedChildren,
+            onToggleSection = onToggleSection,
+            onToggleChildren = onToggleChildren,
+            onOpenConversation = onOpenConversation,
+            onTogglePin = onTogglePin,
+        )
     }
 }
 

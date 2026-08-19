@@ -42,7 +42,7 @@ class TranscriptTimelineTest {
         val nodes = TranscriptTimeline.build(turns, emptyList(), null, agent)
         val footers = nodes.mapNotNull { it.content as? NodeContent.Footer }
         assertEquals(1, footers.size)
-        assertEquals(15, footers.single().turn.usage?.total)
+        assertEquals(15L, footers.single().turn.usage?.total)
         // Each single-line reply is one Markdown block → one standalone AssistantBlock node.
         val textNodes = nodes.filter { it.content is NodeContent.AssistantBlock }
         assertEquals(2, textNodes.size)

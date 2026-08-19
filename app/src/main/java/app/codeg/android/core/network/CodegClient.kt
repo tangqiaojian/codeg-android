@@ -3,7 +3,11 @@ package app.codeg.android.core.network
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ConversationConnectionInfo
 import app.codeg.android.core.model.ConversationDetail
+import app.codeg.android.core.model.CONVERSATION_TAIL_TURNS
 import app.codeg.android.core.model.ConversationIdBody
+import app.codeg.android.core.model.ConversationTurnsPage
+import app.codeg.android.core.model.GetFolderConversationBody
+import app.codeg.android.core.model.GetFolderConversationTurnsBody
 import app.codeg.android.core.model.ConnectBody
 import app.codeg.android.core.model.ConnectionIdBody
 import app.codeg.android.core.model.AnswerPlanApprovalBody
@@ -436,11 +440,35 @@ class CodegClient(
     suspend fun terminalList(): List<TerminalInfo> =
         decode(send("terminal_list", encode(EmptyBody)), ListSerializer(TerminalInfo.serializer()))
 
-    /** Full session detail incl. message history. */
-    suspend fun conversationDetail(id: Int): ConversationDetail =
+    /**
+     * Session detail. Pass [tailTurns] (web default 120) for the recent window,
+     * or [fromIndex] to refetch from a known offset. The two are mutually exclusive.
+     */
+    suspend fun conversationDetail(
+        id: Int,
+        tailTurns: Int? = CONVERSATION_TAIL_TURNS,
+        fromIndex: Int? = null,
+    ): ConversationDetail =
         decode(
-            send("get_folder_conversation", encode(ConversationIdBody(id))),
+            send(
+                "get_folder_conversation",
+                encode(GetFolderConversationBody(id, tailTurns, fromIndex)),
+            ),
             ConversationDetail.serializer(),
+        )
+
+    /** Older-history page ending just before [beforeIndex]. */
+    suspend fun conversationTurns(
+        id: Int,
+        beforeIndex: Int,
+        limit: Int = CONVERSATION_TAIL_TURNS,
+    ): ConversationTurnsPage =
+        decode(
+            send(
+                "get_folder_conversation_turns",
+                encode(GetFolderConversationTurnsBody(id, beforeIndex, limit)),
+            ),
+            ConversationTurnsPage.serializer(),
         )
 
     /** Create a conversation row up front and return its id (a bare JSON int). */

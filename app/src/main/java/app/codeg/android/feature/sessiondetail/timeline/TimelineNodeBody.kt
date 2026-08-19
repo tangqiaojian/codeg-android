@@ -370,7 +370,7 @@ fun InlineTurnError(message: String, modifier: Modifier = Modifier) {
     }
 }
 
-private fun compactTokens(n: Int): String = when {
+private fun compactTokens(n: Long): String = when {
     n < 1_000 -> n.toString()
     n < 1_000_000 -> trimNum(n / 1_000.0) + "k"
     else -> trimNum(n / 1_000_000.0) + "M"
@@ -378,7 +378,7 @@ private fun compactTokens(n: Int): String = when {
 
 private fun trimNum(v: Double): String = if (v >= 100) v.roundToInt().toString() else String.format("%.1f", v)
 
-private fun compactDuration(ms: Int): String {
+private fun compactDuration(ms: Long): String {
     val seconds = ms / 1000.0
     if (seconds < 60) return String.format("%.1fs", seconds)
     val whole = seconds.roundToInt()

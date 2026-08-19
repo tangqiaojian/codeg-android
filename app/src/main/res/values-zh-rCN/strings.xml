@@ -61,6 +61,10 @@
     <string name="session_load_failed">无法加载该会话</string>
     <string name="session_empty_title">还没有消息</string>
     <string name="session_empty_message">该会话的消息会显示在这里。</string>
+    <string name="session_load_earlier">加载更早的消息</string>
+    <string name="session_loading_earlier">正在加载更早的消息…</string>
+    <string name="session_pick_workspace">工作目录</string>
+    <string name="session_pick_workspace_hint">点这里选择本会话的工作目录。可以搜索已打开的项目，也可以浏览服务器文件系统。</string>
     <string name="session_jump_to_latest">回到最新</string>
     <string name="session_agent_options">智能体选项</string>
     <string name="sessions_collapse">收起</string>
@@ -811,6 +815,9 @@
     <string name="agentopts_workspace">工作区</string>
     <string name="agentopts_busy">智能体响应期间无法更改选项。</string>
     <string name="agentopts_choose_folder">选择文件夹</string>
+    <string name="agentopts_change_workspace">选择工作目录</string>
+    <string name="agentopts_search_folders">搜索文件夹</string>
+    <string name="agentopts_browse_folder">浏览服务器文件系统</string>
     <string name="agentopts_folder_readonly">此会话的文件夹已固定</string>
     <string name="agentopts_branch">分支</string>
     <string name="agentopts_select_branch">选择分支</string>

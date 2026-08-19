@@ -122,9 +122,11 @@ object MessageRender {
                     val resultIdx = findResult(blocks, idx, block.id, consumed)
                     var output: String? = null
                     var isErr = false
+                    var resultImages: List<ImageData> = emptyList()
                     if (resultIdx != null) {
                         (blocks[resultIdx] as? ContentBlock.ToolResult)?.let {
-                            output = it.outputPreview; isErr = it.isError; consumed.add(resultIdx)
+                            output = it.outputPreview; isErr = it.isError; resultImages = it.images
+                            consumed.add(resultIdx)
                         }
                     }
                     val state = when {
@@ -150,6 +152,7 @@ object MessageRender {
                             ),
                         ),
                     )
+                    resultImages.forEach { parts.add(RenderPart.Image(it, null)) }
                 }
                 is ContentBlock.ToolResult -> {
                     parts.add(
@@ -161,6 +164,7 @@ object MessageRender {
                             ),
                         ),
                     )
+                    block.images.forEach { parts.add(RenderPart.Image(it, null)) }
                 }
                 is ContentBlock.Unknown -> parts.add(RenderPart.Unknown(block.type))
             }
