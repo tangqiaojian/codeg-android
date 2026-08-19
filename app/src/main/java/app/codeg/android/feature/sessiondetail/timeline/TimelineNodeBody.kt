@@ -1,6 +1,9 @@
 package app.codeg.android.feature.sessiondetail.timeline
 
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -10,15 +13,20 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Archive
@@ -41,9 +49,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -51,8 +58,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.codeg.android.R
 import app.codeg.android.core.common.RelativeTime
+import app.codeg.android.core.common.copyPlainText
 import app.codeg.android.core.designsystem.markdown.MarkdownContent
 import app.codeg.android.core.designsystem.markdown.SingleBlockView
+import app.codeg.android.core.designsystem.markdown.markdownBlockPlainText
+import app.codeg.android.core.model.copyableTurnText
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ContentBlock
@@ -100,9 +110,22 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
 }
 
 /** The user's prompt — a right-aligned accent bubble with a You/time label. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
     val colors = CodegTheme.colors
+    val context = LocalContext.current
+    val copyLabel = stringResource(R.string.timeline_copy)
+    val copyText = remember(turn) { copyableTurnText(turn.blocks) }
+    var copied by remember { mutableStateOf(false) }
+    LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
+    fun copyNow(fromLongPress: Boolean = false) {
+        if (copyText.isEmpty()) return
+        if (copyPlainText(context, copyText, copyLabel)) {
+            copied = true
+            if (fromLongPress) notifyCopied(context)
+        }
+    }
     val bubble = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     Column(
         modifier.fillMaxWidth(),
@@ -120,26 +143,41 @@ private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
                 .widthIn(max = 360.dp)
                 .fillMaxWidth(0.88f)
                 .clip(bubble)
+                .combinedClickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = {},
+                    onLongClick = { copyNow(fromLongPress = true) },
+                    onLongClickLabel = copyLabel,
+                )
                 .background(colors.accent.copy(alpha = 0.22f))
                 .border(0.5.dp, colors.accent.copy(alpha = 0.48f), bubble)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            for (block in turn.blocks) {
-                when (block) {
-                    is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
-                    is ContentBlock.Image -> InlineImage(block.image, null)
-                    is ContentBlock.ImageGeneration ->
-                        if (block.image != null) InlineImage(block.image, block.revisedPrompt)
-                        else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
-                    else -> {}
+            SelectionContainer {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    for (block in turn.blocks) {
+                        when (block) {
+                            is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
+                            is ContentBlock.Image -> InlineImage(block.image, null)
+                            is ContentBlock.ImageGeneration ->
+                                if (block.image != null) InlineImage(block.image, block.revisedPrompt)
+                                else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
+                            else -> {}
+                        }
+                    }
                 }
             }
+        }
+        if (copyText.isNotEmpty()) {
+            DisableSelection { CopyChip(copied = copied, onCopy = { copyNow() }) }
         }
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AssistantNodeBody(
     content: NodeContent.AssistantBlock,
@@ -148,6 +186,9 @@ private fun AssistantNodeBody(
     modifier: Modifier,
 ) {
     val colors = CodegTheme.colors
+    val context = LocalContext.current
+    val copyLabel = stringResource(R.string.timeline_copy)
+    val blockText = remember(content.block) { markdownBlockPlainText(content.block) }
     val shape = when (rail) {
         RailStyle.Standalone -> RoundedCornerShape(16.dp)
         RailStyle.Head -> RoundedCornerShape(16.dp, 16.dp, 6.dp, 6.dp)
@@ -167,6 +208,21 @@ private fun AssistantNodeBody(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
+                .then(
+                    if (!content.streaming && blockText.isNotEmpty()) {
+                        Modifier.combinedClickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {},
+                            onLongClick = {
+                                if (copyPlainText(context, blockText, copyLabel)) notifyCopied(context)
+                            },
+                            onLongClickLabel = copyLabel,
+                        )
+                    } else {
+                        Modifier
+                    },
+                )
                 .background(colors.bgElevated.copy(alpha = if (colors.isDark) 0.55f else 0.92f))
                 .border(0.5.dp, colors.hairline, shape)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -177,7 +233,7 @@ private fun AssistantNodeBody(
                     BlinkingCaret()
                 }
             } else {
-                SingleBlockView(content.block)
+                SelectionContainer { SingleBlockView(content.block) }
             }
         }
     }
@@ -187,12 +243,14 @@ private fun AssistantNodeBody(
 @Composable
 private fun SystemNodeBody(turn: MessageTurn, modifier: Modifier) {
     val text = remember(turn) { systemText(turn) }
-    Text(
-        text,
-        fontSize = 12.sp,
-        color = CodegTheme.colors.textTertiary,
-        modifier = modifier.fillMaxWidth(),
-    )
+    SelectionContainer {
+        Text(
+            text,
+            fontSize = 12.sp,
+            color = CodegTheme.colors.textTertiary,
+            modifier = modifier.fillMaxWidth(),
+        )
+    }
 }
 
 /** Per-reply action + metadata row: Copy · jump-to-question · model · time/tokens/duration. */
@@ -201,11 +259,7 @@ private fun TurnFooter(turn: MessageTurn, questionId: String?, modifier: Modifie
     val colors = CodegTheme.colors
     // Copy text joins every block → memoize it. Meta stays live so the relative time
     // ("47m") keeps ticking rather than freezing at whatever it was when first composed.
-    val copyText = remember(turn) {
-        turn.blocks
-            .mapNotNull { (it as? ContentBlock.Text)?.text?.takeIf { t -> t.isNotBlank() } }
-            .joinToString("\n\n")
-    }
+    val copyText = remember(turn) { copyableTurnText(turn.blocks) }
     val meta = buildList {
         add(RelativeTime.compact(turn.completedAt ?: turn.timestamp))
         val tokens = turn.usage?.total ?: 0
@@ -218,7 +272,7 @@ private fun TurnFooter(turn: MessageTurn, questionId: String?, modifier: Modifie
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        if (copyText.isNotEmpty()) CopyButton(copyText)
+        if (copyText.isNotEmpty()) DisableSelection { CopyChip(copyText) }
         if (questionId != null) JumpToQuestionButton(questionId)
         Spacer(Modifier.weight(1f))
         turn.model?.takeIf { it.isNotBlank() }?.let {
@@ -229,28 +283,48 @@ private fun TurnFooter(turn: MessageTurn, questionId: String?, modifier: Modifie
 }
 
 @Composable
-private fun CopyButton(text: String) {
-    val colors = CodegTheme.colors
-    val clipboard = LocalClipboardManager.current
+private fun CopyChip(text: String) {
+    val context = LocalContext.current
+    val label = stringResource(R.string.timeline_copy)
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
+    CopyChip(
+        copied = copied,
+        onCopy = { if (copyPlainText(context, text, label)) copied = true },
+    )
+}
+
+@Composable
+private fun CopyChip(copied: Boolean, onCopy: () -> Unit) {
+    val colors = CodegTheme.colors
     Row(
         Modifier
-            .clip(RoundedCornerShape(6.dp))
-            .clickable { clipboard.setText(AnnotatedString(text)); copied = true }
-            .padding(horizontal = 4.dp, vertical = 2.dp),
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onCopy)
+            .defaultMinSize(minHeight = 40.dp)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(3.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Crossfade(copied, label = "copy-icon") { c ->
             Icon(
                 if (c) Icons.Rounded.Check else Icons.Rounded.ContentCopy,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.timeline_copy),
                 tint = if (c) SuccessGreen else colors.textTertiary,
-                modifier = Modifier.size(13.dp),
+                modifier = Modifier.size(16.dp),
             )
         }
-        Text(if (copied) stringResource(R.string.timeline_copied) else stringResource(R.string.timeline_copy), fontSize = 11.sp, color = colors.textTertiary)
+        Text(
+            if (copied) stringResource(R.string.timeline_copied) else stringResource(R.string.timeline_copy),
+            fontSize = 12.sp,
+            color = colors.textTertiary,
+        )
+    }
+}
+
+private fun notifyCopied(context: android.content.Context) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+        Toast.makeText(context, context.getString(R.string.timeline_copied), Toast.LENGTH_SHORT).show()
     }
 }
 

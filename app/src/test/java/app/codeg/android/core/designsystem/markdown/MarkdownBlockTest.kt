@@ -47,4 +47,13 @@ class MarkdownBlockTest {
         val blocks = parseMarkdownBlocks("> line one\n> line two")
         assertTrue(blocks.single() is MarkdownBlock.Quote)
     }
+
+    @Test
+    fun `plain text of a list and a table is copyable`() {
+        val list = parseMarkdownBlocks("- one\n- two").single()
+        assertEquals("• one\n• two", markdownBlockPlainText(list))
+
+        val table = parseMarkdownBlocks("| A | B |\n| --- | --- |\n| 1 | 2 |").single()
+        assertEquals("A\tB\n1\t2", markdownBlockPlainText(table))
+    }
 }

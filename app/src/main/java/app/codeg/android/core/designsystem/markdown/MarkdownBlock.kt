@@ -16,6 +16,19 @@ sealed interface MarkdownBlock {
     data class Table(val header: List<String>, val rows: List<List<String>>) : MarkdownBlock
 }
 
+/** Visible plaintext of a parsed block, used by long-press copy on a timeline row. */
+fun markdownBlockPlainText(block: MarkdownBlock): String = when (block) {
+    is MarkdownBlock.Paragraph -> block.text
+    is MarkdownBlock.Heading -> block.text
+    is MarkdownBlock.BulletList -> block.items.joinToString("\n") { "• $it" }
+    is MarkdownBlock.NumberedList -> block.items.joinToString("\n") { "${it.first} ${it.second}" }
+    is MarkdownBlock.Quote -> block.text
+    is MarkdownBlock.Code -> block.code
+    MarkdownBlock.Rule -> ""
+    is MarkdownBlock.Table ->
+        (listOf(block.header) + block.rows).joinToString("\n") { it.joinToString("\t") }
+}
+
 /**
  * Split Markdown source into real blocks — paragraphs, headings, lists, quotes,
  * fenced code, rules, GFM tables. Ported 1:1 from the iOS

@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.selection.DisableSelection
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
@@ -30,13 +32,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import app.codeg.android.R
+import app.codeg.android.core.common.copyPlainText
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import kotlinx.coroutines.delay
 
@@ -83,21 +85,23 @@ fun CodeBlock(
                 fontSize = 11.sp,
                 color = colors.textTertiary,
             )
-            CopyButton(text = code)
+            DisableSelection { CopyButton(text = code) }
         }
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 10.dp, vertical = 8.dp),
-        ) {
-            Text(
-                text = shown,
-                fontFamily = FontFamily.Monospace,
-                fontSize = 12.5.sp,
-                lineHeight = 18.sp,
-                color = colors.textPrimary,
-            )
+        SelectionContainer {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = shown,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 12.5.sp,
+                    lineHeight = 18.sp,
+                    color = colors.textPrimary,
+                )
+            }
         }
         if (collapsible) {
             Text(
@@ -116,7 +120,8 @@ fun CodeBlock(
 /** A copy-to-clipboard icon button that flips to a check for ~1.6s (iOS `CopyButton`). */
 @Composable
 fun CopyButton(text: String, modifier: Modifier = Modifier) {
-    val clipboard = LocalClipboardManager.current
+    val context = LocalContext.current
+    val label = stringResource(R.string.code_copy)
     val colors = CodegTheme.colors
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) {
@@ -126,8 +131,8 @@ fun CopyButton(text: String, modifier: Modifier = Modifier) {
         }
     }
     IconButton(
-        onClick = { clipboard.setText(AnnotatedString(text)); copied = true },
-        modifier = modifier.size(32.dp),
+        onClick = { if (copyPlainText(context, text, label)) copied = true },
+        modifier = modifier.size(40.dp),
     ) {
         Crossfade(targetState = copied, label = "copy-icon") { done ->
             Icon(
