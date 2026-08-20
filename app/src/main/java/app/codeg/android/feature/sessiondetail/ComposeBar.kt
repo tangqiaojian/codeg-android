@@ -1,5 +1,12 @@
 package app.codeg.android.feature.sessiondetail
 
+import android.Manifest
+import android.app.Activity
+import android.content.pm.PackageManager
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
@@ -25,6 +32,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.AlternateEmail
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Image
+import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -36,9 +44,11 @@ import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -48,11 +58,13 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.model.AcpAgentInfo
@@ -81,9 +93,85 @@ fun ComposeBar(
     mentionRanges: List<AgentMention> = emptyList(),
     onMentionSelected: (AgentMentionQuery, AcpAgentInfo) -> Unit = { _, _ -> },
     onMentionDeleted: (Int) -> Unit = {},
+    onVoiceCommit: ((text: String, sendNow: Boolean) -> Unit)? = null,
 ) {
     val colors = CodegTheme.colors
+    val context = LocalContext.current
     var extrasOpen by remember { mutableStateOf(false) }
+    var listening by remember { mutableStateOf(false) }
+    val voiceSession = remember { object { var prefix: String = "" } }
+    val onValueChangeState = rememberUpdatedState(onValueChange)
+    val onVoiceCommitState = rememberUpdatedState(onVoiceCommit)
+    val valueState = rememberUpdatedState(value)
+    val applySpoken = rememberUpdatedState { spoken: String, isFinal: Boolean ->
+        val prefix = voiceSession.prefix
+        val merged = VoiceDraft.merge(prefix, spoken)
+        onValueChangeState.value(TextFieldValue(merged, TextRange(merged.length)))
+        if (isFinal) {
+            listening = false
+            val commit = onVoiceCommitState.value
+            if (commit != null && VoiceDraft.shouldAutoSend(prefix) && merged.isNotBlank()) {
+                commit(merged, true)
+            }
+        }
+    }
+    val dictation = remember {
+        VoiceDictation(
+            context = context,
+            onSpoken = { spoken, isFinal -> applySpoken.value(spoken, isFinal) },
+            onError = {
+                listening = false
+                Toast.makeText(context, R.string.compose_voice_error, Toast.LENGTH_SHORT).show()
+            },
+            onListening = { listening = it },
+        )
+    }
+    DisposableEffect(dictation) { onDispose { dictation.release() } }
+    val speechActivity = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        listening = false
+        if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull().orEmpty()
+        if (spoken.isBlank()) {
+            Toast.makeText(context, R.string.compose_voice_error, Toast.LENGTH_SHORT).show()
+            return@rememberLauncherForActivityResult
+        }
+        applySpoken.value(spoken, true)
+    }
+    fun beginVoice() {
+        voiceSession.prefix = valueState.value.text
+        if (dictation.inlineAvailable) {
+            dictation.start()
+            return
+        }
+        val intent = VoiceDictation.recognitionIntent()
+        if (intent.resolveActivity(context.packageManager) == null) {
+            Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
+            return
+        }
+        listening = true
+        runCatching { speechActivity.launch(intent) }.onFailure {
+            listening = false
+            Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
+        }
+    }
+    val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        if (granted) beginVoice() else {
+            Toast.makeText(context, R.string.compose_voice_permission, Toast.LENGTH_LONG).show()
+        }
+    }
+    fun toggleVoice() {
+        if (listening) {
+            dictation.stop()
+            return
+        }
+        if (!VoiceDictation.canLaunchRecognizer(context)) {
+            Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
+            return
+        }
+        val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) beginVoice() else micPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
     var manualMentionPicker by remember { mutableStateOf(false) }
     val detectedMention = findActiveAgentMentionQuery(value.text, value.selection.start)
     val activeMention = detectedMention?.takeUnless { query ->
@@ -182,7 +270,7 @@ fun ComposeBar(
             ) {
                 if (value.text.isEmpty()) {
                     Text(
-                        stringResource(R.string.compose_message_placeholder),
+                        stringResource(if (listening) R.string.compose_voice_listening else R.string.compose_message_placeholder),
                         color = colors.textTertiary,
                         style = MaterialTheme.typography.bodyLarge,
                     )
@@ -224,6 +312,24 @@ fun ComposeBar(
                 }
             }
 
+            FilledTonalIconButton(
+                onClick = { toggleVoice() },
+                enabled = !isInFlight,
+                colors = IconButtonDefaults.filledTonalIconButtonColors(
+                    containerColor = if (listening) colors.accent.copy(alpha = 0.22f) else colors.textPrimary.copy(alpha = 0.06f),
+                    contentColor = if (listening) colors.accent else colors.textSecondary,
+                    disabledContainerColor = colors.textPrimary.copy(alpha = 0.04f),
+                    disabledContentColor = colors.textTertiary,
+                ),
+            ) {
+                Icon(
+                    if (listening) Icons.Rounded.Stop else Icons.Rounded.Mic,
+                    contentDescription = stringResource(
+                        if (listening) R.string.compose_voice_stop else R.string.compose_voice,
+                    ),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
             if (isInFlight && hasDraft) {
                 FilledIconButton(
                     onClick = onSend,

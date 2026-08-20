@@ -377,6 +377,17 @@ fun SessionDetailScreen(
                         draft = AgentMentionDraft("")
                         composerValue = TextFieldValue("")
                     },
+                    onVoiceCommit = { spoken, sendNow ->
+                        val updated = draft.applyTextChange(spoken)
+                        if (sendNow) {
+                            viewModel.send(updated.toWire())
+                            draft = AgentMentionDraft("")
+                            composerValue = TextFieldValue("")
+                        } else {
+                            draft = updated
+                            composerValue = TextFieldValue(updated.text, TextRange(updated.text.length))
+                        }
+                    },
                     isInFlight = ui.isInFlight,
                     onStop = viewModel::cancel,
                     onPlus = { showInsert = true },

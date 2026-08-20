@@ -41,6 +41,9 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -204,7 +207,7 @@ private fun TokenUsageContent(
         if (report.heatmap.isNotEmpty()) {
             item { HeatmapCard(report.heatmap) }
         }
-        item { SparklineCard(report) }
+        item { SparklineCard(report, bucket) }
         if (days.isNotEmpty()) {
             item {
                 Text(
@@ -295,6 +298,12 @@ private fun TotalsCard(report: TokenUsageReport) {
             fontSize = 32.sp,
             modifier = Modifier.padding(top = 2.dp),
         )
+        Text(
+            TokenUsageFormat.exact(total.totalTokens),
+            color = colors.textTertiary,
+            fontSize = 13.sp,
+            modifier = Modifier.padding(top = 2.dp),
+        )
         if (delta != null) {
             val up = delta >= 0
             Text(
@@ -331,21 +340,78 @@ private fun Metric(label: String, value: String, modifier: Modifier = Modifier) 
 }
 
 @Composable
-private fun SparklineCard(report: TokenUsageReport) {
+private fun SparklineCard(report: TokenUsageReport, bucket: String) {
     if (report.series.isEmpty()) return
-    val max = report.series.maxOf { it.totalTokens }.coerceAtLeast(1)
+    val points = report.series
+    val max = points.maxOf { it.totalTokens }.coerceAtLeast(1)
+    val peak = points.indices.maxByOrNull { points[it].totalTokens }
+    var selected by remember(points.size, peak) { mutableStateOf(peak) }
+    val labels = TokenUsageFormat.labeledBarIndexes(points.size, selected, peak)
     val colors = CodegTheme.colors
+    val zone = ZoneId.systemDefault()
+    val locale = Locale.getDefault()
+    val focus = selected?.takeIf { it in points.indices } ?: peak
     GlassCard(Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.token_usage_trend), color = colors.textTertiary, fontSize = 12.sp)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+            Text(stringResource(R.string.token_usage_trend), color = colors.textTertiary, fontSize = 12.sp)
+            Text(
+                TokenUsageFormat.compact(max),
+                color = colors.textTertiary,
+                fontSize = 11.sp,
+            )
+        }
         Row(
-            Modifier.fillMaxWidth().height(72.dp).padding(top = 10.dp),
+            Modifier.fillMaxWidth().height(108.dp).padding(top = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(2.dp),
             verticalAlignment = Alignment.Bottom,
         ) {
-            report.series.forEach { point ->
-                val h = (point.totalTokens.toFloat() / max.toFloat() * 64f).coerceAtLeast(if (point.totalTokens > 0) 3f else 1f)
-                Box(Modifier.weight(1f).height(h.dp).clip(RoundedCornerShape(2.dp)).background(colors.accent.copy(alpha = 0.85f)))
+            points.forEachIndexed { index, point ->
+                val h = (point.totalTokens.toFloat() / max.toFloat() * 72f).coerceAtLeast(if (point.totalTokens > 0) 4f else 1f)
+                val active = index == focus
+                Column(
+                    Modifier.weight(1f).clickable { selected = index },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Bottom,
+                ) {
+                    if (index in labels && point.totalTokens > 0) {
+                        Text(
+                            TokenUsageFormat.compact(point.totalTokens),
+                            color = if (active) colors.accent else colors.textTertiary,
+                            fontSize = 9.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Clip,
+                        )
+                    }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(h.dp)
+                            .clip(RoundedCornerShape(2.dp))
+                            .background(colors.accent.copy(alpha = if (active) 1f else 0.72f)),
+                    )
+                }
             }
+        }
+        if (focus != null) {
+            val point = points[focus]
+            Text(
+                TokenUsageFormat.exact(point.totalTokens),
+                color = colors.textPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 20.sp,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            Text(
+                stringResource(
+                    R.string.token_usage_trend_point,
+                    TokenUsageFormat.bucketLabel(point, bucket, zone, locale),
+                    TokenUsageFormat.compact(point.totalTokens),
+                    TokenUsageFormat.exact(point.totalTokens),
+                ),
+                color = colors.textSecondary,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 2.dp),
+            )
         }
     }
 }
@@ -383,7 +449,10 @@ private fun DayRow(
                     modifier = Modifier.padding(top = 2.dp),
                 )
             }
-            Text(TokenUsageFormat.compact(point.totalTokens), color = colors.textPrimary, fontWeight = FontWeight.SemiBold)
+            Column(horizontalAlignment = Alignment.End) {
+                Text(TokenUsageFormat.compact(point.totalTokens), color = colors.textPrimary, fontWeight = FontWeight.SemiBold)
+                Text(TokenUsageFormat.exact(point.totalTokens), color = colors.textTertiary, fontSize = 11.sp)
+            }
             Icon(
                 if (selected) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
                 contentDescription = null,

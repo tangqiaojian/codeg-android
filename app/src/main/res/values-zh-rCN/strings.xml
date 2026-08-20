@@ -281,6 +281,7 @@
     <string name="token_usage_duration">耗时</string>
     <string name="token_usage_vs_previous">较上期 %1$s</string>
     <string name="token_usage_trend">用量趋势</string>
+    <string name="token_usage_trend_point">%1$s · %2$s（%3$s）</string>
     <string name="token_usage_daily">每日明细</string>
     <string name="token_usage_heatmap">时段热力</string>
     <string name="token_usage_series_points">%1$d 个数据点</string>
@@ -878,6 +879,12 @@
     <string name="compose_message_placeholder">输入消息</string>
     <string name="compose_stop">停止</string>
     <string name="compose_send">发送</string>
+    <string name="compose_voice">语音输入</string>
+    <string name="compose_voice_stop">停止听写</string>
+    <string name="compose_voice_listening">正在听…</string>
+    <string name="compose_voice_unavailable">这台设备没有语音识别。</string>
+    <string name="compose_voice_permission">请允许麦克风权限，即可听写或直接语音发送。</string>
+    <string name="compose_voice_error">没听清，请再试一次。</string>
     <string name="compose_queue">排队发送</string>
     <string name="compose_queue_title">排队中 · %1$d</string>
     <string name="compose_queue_remove">移除排队消息</string>

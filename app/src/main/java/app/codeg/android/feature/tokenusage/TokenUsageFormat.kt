@@ -15,6 +15,19 @@ object TokenUsageFormat {
         else -> value.toString()
     }
 
+    fun exact(value: Long): String = "%,d".format(Locale.US, value)
+
+    fun labeledBarIndexes(count: Int, selected: Int?, peak: Int?): Set<Int> {
+        if (count <= 0) return emptySet()
+        if (count <= 8) return (0 until count).toSet()
+        return buildSet {
+            add(0)
+            add(count - 1)
+            peak?.takeIf { it in 0 until count }?.let { add(it) }
+            selected?.takeIf { it in 0 until count }?.let { add(it) }
+        }
+    }
+
     fun percentChange(current: Long, previous: Long?): Double? {
         if (previous == null || previous <= 0L) return null
         return (current - previous).toDouble() / previous.toDouble() * 100.0
