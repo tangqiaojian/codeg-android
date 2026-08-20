@@ -22,4 +22,10 @@ class UpdatePolicyTest {
         assertTrue(UpdatePolicy.shouldPrompt(availableTag = "v1.2.5", dismissedTag = "v1.2.4"))
         assertTrue(UpdatePolicy.shouldPrompt(availableTag = "v1.2.4", dismissedTag = null))
     }
+
+    @Test
+    fun `later on 1_3 still prompts for the 0_4 beta series`() {
+        assertTrue(UpdatePolicy.shouldPrompt(availableTag = "v0.4.0-beta", dismissedTag = "v1.3.1"))
+        assertFalse(UpdatePolicy.shouldPrompt(availableTag = "v0.4.0-beta", dismissedTag = "v0.4.0-beta"))
+    }
 }

@@ -36,7 +36,7 @@ fun resolveAvailableUpdate(currentVersionName: String, release: GithubRelease): 
     if (release.draft || release.prerelease) return null
     val remote = AppVersion.parse(release.tagName) ?: return null
     val current = AppVersion.parse(currentVersionName) ?: return null
-    if (remote <= current) return null
+    if (!remote.isNewerThan(current)) return null
     val apk = pickApk(release.assets) ?: return null
     val checksum = release.assets.firstOrNull { it.name == "${apk.name}.sha256" }
         ?: release.assets.firstOrNull { it.name.endsWith(".apk.sha256") }

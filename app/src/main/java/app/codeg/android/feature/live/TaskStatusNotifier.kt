@@ -1,7 +1,6 @@
 package app.codeg.android.feature.live
 
 import android.Manifest
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -29,14 +28,13 @@ class TaskStatusNotifier @Inject constructor(
         if (!hasPermission()) return
         ensureChannel()
         if (snapshot.isIdle) {
-            val n = baseBuilder(
-                title = context.getString(R.string.live_status_idle_title),
-                text = context.getString(R.string.live_status_idle_body),
-                ticker = context.getString(R.string.live_status_idle_ticker),
-                conversationId = null,
-            ).build()
-            attachFocus(
-                n,
+            val n = XiaomiFocusParam.attach(
+                baseBuilder(
+                    title = context.getString(R.string.live_status_idle_title),
+                    text = context.getString(R.string.live_status_idle_body),
+                    ticker = context.getString(R.string.live_status_idle_ticker),
+                    conversationId = null,
+                ),
                 XiaomiFocusParam.encode(
                     title = context.getString(R.string.live_status_idle_title),
                     content = context.getString(R.string.live_status_idle_body),
@@ -49,8 +47,10 @@ class TaskStatusNotifier @Inject constructor(
         val title = snapshot.title.ifBlank { context.getString(R.string.session_untitled) }
         val statusLine = statusLine(snapshot)
         val ticker = "${snapshot.agentLabel} · ${statusShort(snapshot.status)}"
-        val n = baseBuilder(title, statusLine, ticker, snapshot.conversationId).build()
-        attachFocus(n, XiaomiFocusParam.encode(title = title, content = statusLine, ticker = ticker))
+        val n = XiaomiFocusParam.attach(
+            baseBuilder(title, statusLine, ticker, snapshot.conversationId),
+            XiaomiFocusParam.encode(title = title, content = statusLine, ticker = ticker),
+        )
         manager.notify(NOTIFICATION_ID, n)
     }
 
@@ -60,13 +60,15 @@ class TaskStatusNotifier @Inject constructor(
             return
         }
         ensureChannel()
-        val n = baseBuilder(
-            title = context.getString(R.string.live_status_idle_title),
-            text = context.getString(R.string.live_status_off),
-            ticker = context.getString(R.string.live_status_off),
-            conversationId = null,
-        ).setOngoing(false).build()
-        attachFocus(n, XiaomiFocusParam.cancel())
+        val n = XiaomiFocusParam.attach(
+            baseBuilder(
+                title = context.getString(R.string.live_status_idle_title),
+                text = context.getString(R.string.live_status_off),
+                ticker = context.getString(R.string.live_status_off),
+                conversationId = null,
+            ).setOngoing(false),
+            XiaomiFocusParam.cancel(),
+        )
         manager.notify(NOTIFICATION_ID, n)
         manager.cancel(NOTIFICATION_ID)
     }
@@ -120,10 +122,6 @@ class TaskStatusNotifier @Inject constructor(
             .setSilent(true)
             .setCategory(NotificationCompat.CATEGORY_PROGRESS)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
-    }
-
-    private fun attachFocus(notification: Notification, json: String) {
-        notification.extras.putString(XiaomiFocusParam.EXTRA_KEY, json)
     }
 
     private fun statusLine(snapshot: LiveTaskSnapshot): String {

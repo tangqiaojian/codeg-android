@@ -42,4 +42,22 @@ class ReleaseResolveTest {
         assertNull(resolveAvailableUpdate("1.2.3", ready.copy(tagName = "v1.2.4", prerelease = true)))
         assertNull(resolveAvailableUpdate("1.2.3", GithubRelease("v1.2.4", assets = listOf(sha))))
     }
+
+    @Test
+    fun `0_4 beta is offered to installs still on the 1_3 series`() {
+        val betaApk = GithubAsset(
+            name = "codeg-android-0.4.0-beta-debug.apk",
+            browserDownloadUrl = "https://github.com/tangqiaojian/codeg-android/releases/download/v0.4.0-beta/codeg-android-0.4.0-beta-debug.apk",
+            size = 70_000_000,
+        )
+        val release = GithubRelease(
+            tagName = "v0.4.0-beta",
+            body = "Session keepalive, queued prompts, island",
+            assets = listOf(betaApk),
+        )
+        val update = resolveAvailableUpdate("1.3.1", release)!!
+        assertEquals("0.4.0", update.version)
+        assertEquals("v0.4.0-beta", update.tag)
+        assertEquals(betaApk.browserDownloadUrl, update.apkUrl)
+    }
 }

@@ -29,3 +29,7 @@ service-account*.json
 # Release signing — local only, never commit
 /codeg-release.jks
 /keystore.properties
+
+# Built APKs — published via GitHub Releases, never committed
+*.apk
+!debug.keystore

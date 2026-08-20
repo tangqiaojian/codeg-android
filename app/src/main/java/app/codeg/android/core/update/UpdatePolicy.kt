@@ -19,6 +19,6 @@ object UpdatePolicy {
         if (availableTag == dismissedTag) return false
         val available = AppVersion.parse(availableTag) ?: return true
         val dismissed = AppVersion.parse(dismissedTag) ?: return true
-        return available > dismissed
+        return available.isNewerThan(dismissed)
     }
 }

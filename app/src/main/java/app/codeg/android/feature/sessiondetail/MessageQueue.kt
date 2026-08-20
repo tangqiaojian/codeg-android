@@ -1,8 +1,10 @@
 package app.codeg.android.feature.sessiondetail
 
 import java.util.UUID
+import kotlinx.serialization.Serializable
 
 /** One locally queued follow-up prompt, flushed when the live turn ends. */
+@Serializable
 data class QueuedPrompt(
     val id: String,
     val text: String,

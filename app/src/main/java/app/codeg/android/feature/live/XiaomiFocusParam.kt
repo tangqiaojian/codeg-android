@@ -1,5 +1,7 @@
 package app.codeg.android.feature.live
 
+import android.app.Notification
+import androidx.core.app.NotificationCompat
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.buildJsonObject
@@ -28,23 +30,45 @@ object XiaomiFocusParam {
                     put("enableFloat", false)
                     put("islandFirstFloat", false)
                     put("timeout", 720)
+                    put("filterWhenNoPermission", false)
                     put("ticker", ticker)
                     put("aodTitle", ticker)
-                    put("title", title)
-                    put("content", content)
+                    // Expanded focus (OS2/OS3) — text component 1.
+                    putJsonObject("baseInfo") {
+                        put("type", 1)
+                        put("title", title.take(24))
+                        put("content", content.take(40))
+                    }
                     putJsonObject("param_island") {
                         put("islandProperty", 1)
                         putJsonObject("bigIslandArea") {
-                            put("textTitle", title.take(16))
-                            put("textContent", content.take(24))
+                            putJsonObject("imageTextInfoLeft") {
+                                put("type", 1)
+                                putJsonObject("picInfo") { put("type", 1) }
+                                putJsonObject("textInfo") {
+                                    put("title", title.take(8))
+                                    put("content", content.take(8))
+                                }
+                            }
                         }
                         putJsonObject("smallIslandArea") {
-                            put("textTitle", ticker.take(12))
+                            putJsonObject("textInfo") {
+                                put("title", ticker.take(4))
+                            }
                         }
                     }
                 }
             },
         )
+
+    /** Official HyperOS samples mutate extras after [Notification.build]; also
+     *  stamp the builder so Compat copies them in. */
+    fun attach(builder: NotificationCompat.Builder, json: String): Notification {
+        builder.extras.putString(EXTRA_KEY, json)
+        val notification = builder.build()
+        notification.extras.putString(EXTRA_KEY, json)
+        return notification
+    }
 
     fun cancel(): String =
         json.encodeToString(

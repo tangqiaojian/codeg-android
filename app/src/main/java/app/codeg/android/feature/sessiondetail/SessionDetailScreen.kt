@@ -3,12 +3,9 @@ package app.codeg.android.feature.sessiondetail
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -53,6 +50,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -76,6 +74,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
 import app.codeg.android.core.designsystem.component.AgentAvatar
@@ -137,6 +138,21 @@ fun SessionDetailScreen(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.onScreenVisible()
+                Lifecycle.Event.ON_PAUSE -> viewModel.onScreenHidden()
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            viewModel.onScreenHidden()
+        }
+    }
 
     // A failed send returns the user's typed text to the composer so it isn't lost — but only
     // when the composer is empty, so it never clobbers a fresh draft typed during the send.
@@ -313,22 +329,10 @@ fun SessionDetailScreen(
         },
         bottomBar = {
             Column(Modifier.imePadding()) {
-                SessionFailureBanner(
-                    failures = ui.sessionFailures,
-                    canOpenNewSession = ui.selectedFolderId != null || ui.summary?.folderId != null,
-                    canOpenSettings = onOpenSettings != null,
-                    onAction = { action, _ ->
-                        viewModel.onSessionFailureAction(
-                            action = action,
-                            onNewSession = { folderId -> onOpenSession(folderId) },
-                            onLogin = { onOpenSettings?.invoke() },
-                        )
-                    },
-                    onDismiss = viewModel::dismissSessionFailures,
-                )
                 MessageQueueBar(
                     queue = ui.queuedPrompts,
                     onRemove = viewModel::removeQueuedPrompt,
+                    onUpdate = viewModel::updateQueuedPrompt,
                 )
                 ui.pendingPermission?.let { p ->
                     PermissionRequestCard(
@@ -352,23 +356,6 @@ fun SessionDetailScreen(
                         onAnswer = viewModel::answerPlanApproval,
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
                     )
-                }
-                // Keep the last shown message so the exit animation has content to fade.
-                var lastNotice by remember { mutableStateOf("") }
-                LaunchedEffect(ui.notice) { ui.notice?.let { lastNotice = it } }
-                AnimatedVisibility(
-                    visible = ui.notice != null,
-                    enter = expandVertically(tween(220)) + fadeIn(tween(220)),
-                    exit = shrinkVertically(tween(180)) + fadeOut(tween(180)),
-                ) {
-                    NoticeBanner(lastNotice, onDismiss = viewModel::dismissNotice)
-                }
-                AnimatedVisibility(
-                    visible = ui.sendStatus != null && ui.isInFlight,
-                    enter = fadeIn(tween(160)),
-                    exit = fadeOut(tween(160)),
-                ) {
-                    SendStatusLine(ui.sendStatus ?: "")
                 }
                 if (ui.attachments.isNotEmpty()) AttachmentStrip(ui.attachments, onRemove = viewModel::removeAttachment)
                 ComposeBar(
@@ -415,6 +402,22 @@ fun SessionDetailScreen(
         },
     ) { padding ->
         Column(Modifier.padding(padding).fillMaxSize()) {
+            SessionStatusStrip(
+                sendStatus = ui.sendStatus,
+                failures = ui.sessionFailures,
+                notice = ui.notice,
+                canOpenNewSession = ui.selectedFolderId != null || ui.summary?.folderId != null,
+                canOpenSettings = onOpenSettings != null,
+                onFailureAction = { action, _ ->
+                    viewModel.onSessionFailureAction(
+                        action = action,
+                        onNewSession = { folderId -> onOpenSession(folderId) },
+                        onLogin = { onOpenSettings?.invoke() },
+                    )
+                },
+                onDismissFailures = viewModel::dismissSessionFailures,
+                onDismissNotice = viewModel::dismissNotice,
+            )
             if (findOpen) {
                 TranscriptFindBar(
                     query = findQuery,
@@ -795,42 +798,6 @@ private fun JumpToLatestButton(onClick: () -> Unit) {
             tint = colors.accent,
             modifier = Modifier.size(20.dp),
         )
-    }
-}
-
-@Composable
-private fun SendStatusLine(status: String) {
-    val colors = CodegTheme.colors
-    Text(
-        text = status,
-        fontSize = 12.sp,
-        color = colors.textTertiary,
-        modifier = Modifier
-            .fillMaxWidth()
-            .background(colors.bgElevated.copy(alpha = 0.92f))
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-    )
-}
-
-@Composable
-private fun NoticeBanner(message: String, onDismiss: () -> Unit) {
-    val colors = CodegTheme.colors
-    Row(
-        Modifier
-            .fillMaxWidth()
-            .background(colors.danger.copy(alpha = 0.14f))
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            message,
-            style = androidx.compose.material3.MaterialTheme.typography.bodySmall,
-            color = colors.textPrimary,
-            modifier = Modifier.weight(1f),
-        )
-        IconButton(onClick = onDismiss) {
-            Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.common_dismiss), tint = colors.textSecondary)
-        }
     }
 }
 

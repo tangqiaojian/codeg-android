@@ -70,6 +70,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
 import javax.inject.Inject
 
 /** WS `detached` reason meaning the ACP connection itself is gone (terminal — a
@@ -78,6 +79,9 @@ private const val REASON_CONNECTION_GONE = "connection_gone"
 
 /** Max consecutive silent re-attaches before falling back to a transcript reconcile. */
 private const val MAX_STREAM_RECONNECTS = 6
+
+private const val QUEUE_STATE_KEY = "queued_prompts"
+private const val QUEUE_PREFS = "session_prompt_queue"
 
 /** The selector key used for the session mode (config options key by their own id). */
 private const val MODE_KEY = "mode"
@@ -141,6 +145,9 @@ class SessionDetailViewModel @Inject constructor(
     private val subscriptionId = UUID.randomUUID().toString()
     /** Consecutive silent re-attaches for the current turn; reset on a confirmed attach. */
     private var streamReconnects = 0
+    private var lastEventAt = 0L
+    private var screenVisible = false
+    private var watchJob: Job? = null
     /** True while a reattach still owes its first snapshot seed. If the socket drops
      *  mid-handshake, the reconnect re-requests the seed instead of streaming blind. */
     private var pendingReattachSeed = false
@@ -152,6 +159,7 @@ class SessionDetailViewModel @Inject constructor(
     val ui: StateFlow<SessionDetailUiState> = _ui.asStateFlow()
 
     init {
+        restoreQueuedPrompts()
         load()
     }
 
@@ -196,6 +204,7 @@ class SessionDetailViewModel @Inject constructor(
                         )
                     }
                     loadRelatedWork(c, id, folder)
+                    touchStream()
                     // Reattach when the server reports the turn live — via an explicit
                     // in-flight user turn id or the conversation status (iOS parity).
                     if (detail.inFlightUserTurnId != null || detail.summary.status.isLive) reattachIfLive()
@@ -258,7 +267,7 @@ class SessionDetailViewModel @Inject constructor(
         if (trimmed.isEmpty() && attachments.isEmpty()) return
         if (_ui.value.isInFlight) {
             if (trimmed.isEmpty()) return
-            _ui.update { it.copy(queuedPrompts = PromptQueue.enqueue(it.queuedPrompts, trimmed)) }
+            setQueuedPrompts(PromptQueue.enqueue(_ui.value.queuedPrompts, trimmed))
             return
         }
         applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.ALL) }
@@ -341,12 +350,8 @@ class SessionDetailViewModel @Inject constructor(
             throw e
         } catch (e: ApiError.TurnInProgress) {
             discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = null)
-            _ui.update {
-                it.copy(
-                    queuedPrompts = PromptQueue.requeueFront(it.queuedPrompts, text),
-                    restoreDraft = null,
-                )
-            }
+            setQueuedPrompts(PromptQueue.requeueFront(_ui.value.queuedPrompts, text))
+            _ui.update { it.copy(restoreDraft = null) }
         } catch (e: Exception) {
             discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = e.displayMessage())
         }
@@ -410,6 +415,7 @@ class SessionDetailViewModel @Inject constructor(
         val id = c.createConversation(f.id, agent, title = firstPrompt.take(60))
         conversationId = id
         savedStateHandle["id"] = id
+        persistQueuedPrompts(_ui.value.queuedPrompts)
         _ui.update { it.copy(isNew = false) }
     }
 
@@ -457,8 +463,12 @@ class SessionDetailViewModel @Inject constructor(
                 if (gen != streamGeneration) return@collect
                 when (frame) {
                     is StreamFrame.Global -> Unit
-                    StreamFrame.Ready -> s.attach(subscriptionId, conn, lastSeq.takeIf { it > 0 })
+                    StreamFrame.Ready -> {
+                        touchStream()
+                        s.attach(subscriptionId, conn, lastSeq.takeIf { it > 0 })
+                    }
                     is StreamFrame.Snapshot -> {
+                        touchStream()
                         streamReconnects = 0
                         frame.snapshot.eventSeq?.let { lastSeq = it }
                         if (seedOnAttach && !seedLiveFromSnapshot(frame.snapshot)) {
@@ -475,6 +485,7 @@ class SessionDetailViewModel @Inject constructor(
                         if (!attached.isCompleted) attached.complete(Unit)
                     }
                     is StreamFrame.Replay -> {
+                        touchStream()
                         streamReconnects = 0
                         pendingReattachSeed = false
                         frame.events.forEach { applyEvent(it.event, it.seq) }
@@ -492,6 +503,8 @@ class SessionDetailViewModel @Inject constructor(
                             handleStreamEnded(gen, frame.reason)
                         }
                     }
+                    // Protocol keepalive only — must not reset the ACP quiet timer or
+                    // SessionWatch would never reconnect a hung-but-pingable socket.
                     StreamFrame.Pong -> Unit
                     is StreamFrame.Closed -> {
                         if (awaitAttach && !attached.isCompleted) {
@@ -575,7 +588,9 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     private fun applyEvent(event: AcpEvent, seq: Long) {
+        touchStream()
         if (seq > 0) lastSeq = seq
+        if (liveBuilder == null && eventImpliesLiveTurn(event)) adoptIncomingTurn()
         val builder = liveBuilder
         when (event) {
             is AcpEvent.ContentDelta -> {
@@ -887,13 +902,16 @@ class SessionDetailViewModel @Inject constructor(
         if (parked != null && planFollowUp == null) {
             _ui.update { it.copy(notice = appContext.getString(R.string.plan_approval_notes_dropped)) }
         }
-        closeStream()
         reconcileAfterTurn()
         // The keep-planning turn just ended — deliver the revision notes as the follow-up
         // prompt Grok expects (it discards them on the reply itself). `send` supersedes
         // the reconcile it just started and folds the finished reply in locally, exactly
         // as a user typing the instant a turn ends would.
         applySessionFailures { SessionFailures.settle(it, SessionFailureSettleScope.WARNINGS) }
+        // Keep the socket while the user is looking at this session so a later
+        // turn (this client or another) still streams in. Hidden screens still
+        // tear down to avoid leaking the consumer.
+        if (!screenVisible) closeStream()
         if (planFollowUp != null) send(planFollowUp, withAttachments = false)
         else flushQueuedPrompt()
     }
@@ -911,8 +929,15 @@ class SessionDetailViewModel @Inject constructor(
 
     private fun handleStreamEnded(gen: Int, reason: String?) {
         if (gen != streamGeneration) return
-        // If the turn already finished, this is a normal close.
-        if (!_ui.value.isInFlight) return
+        // If the turn already finished, this is a normal close — unless the user
+        // is still on the screen, in which case we keep a live subscription.
+        if (!_ui.value.isInFlight) {
+            if (screenVisible && reason != REASON_CONNECTION_GONE && connectionId != null) {
+                streamReconnects = 0
+                reconnectStream()
+            }
+            return
+        }
         // `connection_gone` is terminal — the ACP connection itself is gone, so a
         // socket reopen can't recover it; reconcile against the server transcript.
         if (reason == REASON_CONNECTION_GONE) {
@@ -936,10 +961,16 @@ class SessionDetailViewModel @Inject constructor(
     private fun reconnectStream() {
         streamReconnects += 1
         if (streamReconnects > MAX_STREAM_RECONNECTS) {
-            reconcileAfterTurn()
+            // Don't go silent: fold whatever we have, then let [SessionWatch] keep trying.
+            streamReconnects = 0
+            touchStream()
+            if (_ui.value.isInFlight) reconcileAfterTurn()
             return
         }
-        val conn = connectionId ?: run { reconcileAfterTurn(); return }
+        val conn = connectionId ?: run {
+            if (_ui.value.isInFlight) reconcileAfterTurn()
+            return
+        }
         // Supersede the dying consumer immediately so its trailing frames can't slip
         // through the reconnect budget during the backoff window.
         streamGeneration += 1
@@ -955,8 +986,10 @@ class SessionDetailViewModel @Inject constructor(
                 } else it
             }
             delay(backoffMs)
-            // Bail if the turn ended or was superseded (cancel / finalize) while we waited.
-            if (gen != streamGeneration || !_ui.value.isInFlight) return@launch
+            // Bail if a newer consumer superseded us, or the screen went away after
+            // the in-flight turn ended.
+            if (gen != streamGeneration) return@launch
+            if (!_ui.value.isInFlight && !screenVisible) return@launch
             connectStream(conn, awaitAttach = false, seedOnAttach = pendingReattachSeed)
         }
     }
@@ -1113,7 +1146,39 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     fun removeQueuedPrompt(id: String) {
-        _ui.update { it.copy(queuedPrompts = PromptQueue.remove(it.queuedPrompts, id)) }
+        setQueuedPrompts(PromptQueue.remove(_ui.value.queuedPrompts, id))
+    }
+
+    fun updateQueuedPrompt(id: String, text: String) {
+        setQueuedPrompts(PromptQueue.update(_ui.value.queuedPrompts, id, text))
+    }
+
+    fun onScreenVisible() {
+        screenVisible = true
+        if (watchJob?.isActive != true) {
+            watchJob = viewModelScope.launch { watchLoop() }
+        }
+        viewModelScope.launch { resumeVisibleSession() }
+    }
+
+    fun onScreenHidden() {
+        screenVisible = false
+        watchJob?.cancel()
+        watchJob = null
+        closeStream()
+    }
+
+    private suspend fun resumeVisibleSession() {
+        if (conversationId == null || client == null) {
+            touchStream()
+            return
+        }
+        if (_ui.value.isInFlight || _ui.value.summary?.status?.isLive == true) {
+            if (stream == null) reattachIfLive()
+        } else {
+            refetchConversation()?.let { applyTranscript(it) }
+        }
+        touchStream()
     }
 
     fun onSessionFailureAction(
@@ -1145,8 +1210,110 @@ class SessionDetailViewModel @Inject constructor(
         if (_ui.value.isInFlight) return
         val (head, rest) = PromptQueue.dequeue(_ui.value.queuedPrompts)
         if (head == null) return
-        _ui.update { it.copy(queuedPrompts = rest) }
+        setQueuedPrompts(rest)
         send(head.text)
+    }
+
+    private fun setQueuedPrompts(queue: List<QueuedPrompt>) {
+        persistQueuedPrompts(queue)
+        _ui.update { it.copy(queuedPrompts = queue) }
+    }
+
+    private fun restoreQueuedPrompts() {
+        val restored = PromptQueueStore.decode(savedStateHandle.get<String>(QUEUE_STATE_KEY))
+            .ifEmpty {
+                conversationIdArg?.let { retainedQueues[it] }.orEmpty()
+            }
+            .ifEmpty {
+                conversationIdArg?.let { id ->
+                    PromptQueueStore.decode(queuePrefs().getString(queuePrefsKey(id), null))
+                }.orEmpty()
+            }
+        if (restored.isNotEmpty()) {
+            persistQueuedPrompts(restored)
+            _ui.update { it.copy(queuedPrompts = restored) }
+        }
+    }
+
+    private fun persistQueuedPrompts(queue: List<QueuedPrompt>) {
+        val encoded = PromptQueueStore.encode(queue)
+        savedStateHandle[QUEUE_STATE_KEY] = encoded
+        val id = conversationId ?: conversationIdArg ?: return
+        if (queue.isEmpty()) {
+            retainedQueues.remove(id)
+            queuePrefs().edit().remove(queuePrefsKey(id)).apply()
+        } else {
+            retainedQueues[id] = queue
+            queuePrefs().edit().putString(queuePrefsKey(id), encoded).apply()
+        }
+    }
+
+    private fun queuePrefs() = appContext.getSharedPreferences(QUEUE_PREFS, Context.MODE_PRIVATE)
+
+    private fun queuePrefsKey(conversationId: Int) = "q-$conversationId"
+
+    private fun touchStream() {
+        lastEventAt = System.currentTimeMillis()
+    }
+
+    private fun eventImpliesLiveTurn(event: AcpEvent): Boolean = when (event) {
+        is AcpEvent.ContentDelta,
+        is AcpEvent.Thinking,
+        is AcpEvent.ToolCall,
+        is AcpEvent.ToolCallUpdate,
+        is AcpEvent.PlanUpdate,
+        is AcpEvent.PermissionRequest,
+        is AcpEvent.QuestionRequest,
+        is AcpEvent.PlanApprovalRequest,
+        is AcpEvent.TurnRetrying,
+        -> true
+        is AcpEvent.StatusChanged -> event.status == ConnectionStatus.PROMPTING
+        else -> false
+    }
+
+    /** A later turn started on an already-open socket (we kept it after the last
+     *  turn while the screen was visible). Own it as a live turn. */
+    private fun adoptIncomingTurn() {
+        val builder = LiveTurnBuilder()
+        liveBuilder = builder
+        turnBaseline = _ui.value.turns.size
+        _ui.update {
+            it.copy(
+                isInFlight = true,
+                live = builder.snapshot(),
+                liveFromReattach = false,
+                sendStatus = appContext.getString(R.string.live_status_thinking),
+            )
+        }
+    }
+
+    private suspend fun watchLoop() {
+        while (screenVisible) {
+            delay(SessionWatch.TICK_MS)
+            if (!screenVisible) return
+            stream?.ping()
+            val action = SessionWatch.tick(
+                isInFlight = _ui.value.isInFlight,
+                conversationLive = _ui.value.summary?.status?.isLive == true,
+                millisSinceEvent = System.currentTimeMillis() - lastEventAt,
+            )
+            when (action) {
+                SessionWatchAction.WAIT -> Unit
+                SessionWatchAction.REATTACH -> {
+                    touchStream()
+                    if (!_ui.value.isInFlight && stream == null) reattachIfLive()
+                }
+                SessionWatchAction.RECONNECT -> {
+                    touchStream()
+                    streamReconnects = 0
+                    reconnectStream()
+                }
+                SessionWatchAction.REFETCH -> {
+                    touchStream()
+                    refetchConversation()?.let { applyTranscript(it) }
+                }
+            }
+        }
     }
 
     private fun applySessionFailures(transform: (List<SessionFailureRecord>) -> List<SessionFailureRecord>) {
@@ -1245,9 +1412,15 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     override fun onCleared() {
+        persistQueuedPrompts(_ui.value.queuedPrompts)
         sendJob?.cancel()
+        watchJob?.cancel()
         closeStream()
         super.onCleared()
+    }
+
+    companion object {
+        private val retainedQueues = ConcurrentHashMap<Int, List<QueuedPrompt>>()
     }
 
     // endregion
