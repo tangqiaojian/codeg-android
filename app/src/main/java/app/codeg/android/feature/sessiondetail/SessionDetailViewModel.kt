@@ -148,6 +148,8 @@ class SessionDetailViewModel @Inject constructor(
     private var lastEventAt = 0L
     private var screenVisible = false
     private var watchJob: Job? = null
+    private var flushRetryJob: Job? = null
+    private var flushRetryAttempt = 0
     /** True while a reattach still owes its first snapshot seed. If the socket drops
      *  mid-handshake, the reconnect re-requests the seed instead of streaming blind. */
     private var pendingReattachSeed = false
@@ -210,7 +212,7 @@ class SessionDetailViewModel @Inject constructor(
                     if (detail.inFlightUserTurnId != null || detail.summary.status.isLive) {
                         reattachIfLive()
                     } else {
-                        flushQueuedPrompt()
+                        scheduleFlushRetry(resetAttempt = true)
                     }
                 } else {
                     // New task: load the draft pickers' sources (top-level open folders +
@@ -347,6 +349,7 @@ class SessionDetailViewModel @Inject constructor(
                     attemptSend(c, text, attachments, clientMessageId, freshConnection = true)
                 } else throw e
             }
+            flushRetryAttempt = 0
             _ui.update {
                 if (it.isInFlight) it.copy(sendStatus = appContext.getString(R.string.live_status_thinking)) else it
             }
@@ -356,6 +359,7 @@ class SessionDetailViewModel @Inject constructor(
             discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = null)
             setQueuedPrompts(PromptQueue.requeueFront(_ui.value.queuedPrompts, text))
             _ui.update { it.copy(restoreDraft = null) }
+            scheduleFlushRetry()
         } catch (e: Exception) {
             discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = e.displayMessage())
         }
@@ -864,7 +868,7 @@ class SessionDetailViewModel @Inject constructor(
         val id = conversationId ?: return
         viewModelScope.launch {
             refetchConversation()?.let { d -> applyTranscript(d) }
-            flushQueuedPrompt()
+            scheduleFlushRetry(resetAttempt = true)
         }
     }
 
@@ -918,7 +922,7 @@ class SessionDetailViewModel @Inject constructor(
         // tear down to avoid leaking the consumer.
         if (!screenVisible) closeStream()
         if (planFollowUp != null) send(planFollowUp, withAttachments = false)
-        else flushQueuedPrompt()
+        else scheduleFlushRetry(resetAttempt = true)
     }
 
     private fun failLive(message: String) {
@@ -1193,7 +1197,7 @@ class SessionDetailViewModel @Inject constructor(
             if (stream == null) reattachIfLive()
         } else {
             refetchConversation()?.let { applyTranscript(it) }
-            flushQueuedPrompt()
+            scheduleFlushRetry(resetAttempt = true)
         }
         touchStream()
     }
@@ -1224,11 +1228,23 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     private fun flushQueuedPrompt() {
-        if (_ui.value.isInFlight) return
+        if (!PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) return
         val (head, rest) = PromptQueue.dequeue(_ui.value.queuedPrompts)
         if (head == null) return
         setQueuedPrompts(rest)
         send(head.text)
+    }
+
+    private fun scheduleFlushRetry(resetAttempt: Boolean = false) {
+        if (resetAttempt) flushRetryAttempt = 0
+        if (!PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) return
+        flushRetryJob?.cancel()
+        val wait = PromptQueueFlush.retryDelayMs(flushRetryAttempt)
+        flushRetryAttempt = (flushRetryAttempt + 1).coerceAtMost(8)
+        flushRetryJob = viewModelScope.launch {
+            delay(wait)
+            flushQueuedPrompt()
+        }
     }
 
     private fun setQueuedPrompts(queue: List<QueuedPrompt>) {
@@ -1315,10 +1331,19 @@ class SessionDetailViewModel @Inject constructor(
                 millisSinceEvent = System.currentTimeMillis() - lastEventAt,
             )
             when (action) {
-                SessionWatchAction.WAIT -> Unit
+                SessionWatchAction.WAIT -> {
+                    if (PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size) &&
+                        flushRetryJob?.isActive != true
+                    ) {
+                        scheduleFlushRetry()
+                    }
+                }
                 SessionWatchAction.REATTACH -> {
                     touchStream()
                     if (!_ui.value.isInFlight && stream == null) reattachIfLive()
+                    if (PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) {
+                        scheduleFlushRetry()
+                    }
                 }
                 SessionWatchAction.RECONNECT -> {
                     touchStream()
@@ -1328,6 +1353,9 @@ class SessionDetailViewModel @Inject constructor(
                 SessionWatchAction.REFETCH -> {
                     touchStream()
                     refetchConversation()?.let { applyTranscript(it) }
+                    if (PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) {
+                        scheduleFlushRetry(resetAttempt = true)
+                    }
                 }
             }
         }
@@ -1432,6 +1460,7 @@ class SessionDetailViewModel @Inject constructor(
         persistQueuedPrompts(_ui.value.queuedPrompts)
         sendJob?.cancel()
         watchJob?.cancel()
+        flushRetryJob?.cancel()
         closeStream()
         super.onCleared()
     }
