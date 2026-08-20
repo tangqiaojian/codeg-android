@@ -87,6 +87,10 @@
     <string name="sessions_filter_chats">Chats</string>
     <string name="sessions_filter_folders_empty">No folder sessions</string>
     <string name="sessions_filter_chats_empty">No chats</string>
+    <string name="sessions_section_folders">Folders</string>
+    <string name="sessions_section_chats">Chats</string>
+    <string name="sessions_section_recent">Recent</string>
+    <string name="sessions_open_folder">Open folder</string>
     <string name="session_find">Find in session</string>
     <string name="session_find_placeholder">Find in messages</string>
     <string name="session_find_previous">Previous match</string>

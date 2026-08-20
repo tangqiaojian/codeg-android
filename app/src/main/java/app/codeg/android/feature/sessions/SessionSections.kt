@@ -4,88 +4,67 @@ import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.core.model.FolderVisibility
 
+/** How many conversations the Recent bucket keeps, matching the desktop sidebar. */
+internal const val RECENT_LIMIT = 10
+
 /**
  * One rendered group in the Chats list, fully sorted and filtered.
  *
- * Built off the main thread by [buildSessionSections] (exposed as
- * [SessionListViewModel.sections]) so the O(n·log n) grouping/sorting never runs
- * during composition — the `LazyColumn` just iterates these pre-sorted rows, which
- * is what keeps a very large session list scrolling smoothly. Mirrors the iOS
- * `SessionListView` sectioning (Pinned / per-folder / Other), realized on Android
- * as native collapsible sections rather than zoom-drill cards.
+ * Desktop sidebar buckets: Folders (workspace rows) / Chats (conversation
+ * rows) / Recent. Pinned and Other stay as extra groups when they have rows.
  */
 data class SessionSection(
-    /** Stable id used for the collapse set and the header's LazyColumn key. */
     val id: String,
     val kind: SectionKind,
-    val rows: List<SessionRowItem>,
-    /** Worktree (or other child-folder) groups nested under a workspace. */
-    val nested: List<SessionSection> = emptyList(),
+    val rows: List<SessionRowItem> = emptyList(),
+    val folders: List<FolderEntry> = emptyList(),
     val depth: Int = 0,
     val breadcrumb: String? = null,
 ) {
-    val count: Int get() = rows.size + nested.sumOf { it.count }
+    val count: Int
+        get() = when (kind) {
+            SectionKind.Folders -> folders.sumOf { it.entryCount }
+            else -> rows.size
+        }
 }
 
-/** What a [SessionSection] represents — drives its header icon, label, and tint. */
+/** A workspace/worktree row in the Folders bucket. */
+data class FolderEntry(
+    val folder: FolderDetail,
+    val depth: Int = 0,
+    val breadcrumb: String? = null,
+    val conversations: List<SessionRowItem> = emptyList(),
+    val children: List<FolderEntry> = emptyList(),
+) {
+    val entryCount: Int get() = 1 + children.sumOf { it.entryCount }
+    val sessionCount: Int get() = conversations.size + children.sumOf { it.sessionCount }
+}
+
 sealed interface SectionKind {
-    /** Pinned conversations across all folders. */
     data object Pinned : SectionKind
-
-    /**
-     * One folder's non-pinned conversations. Workspace (top-level) folders use
-     * [depth] 0; worktrees nest under their parent with [depth] 1 and a
-     * [workspaceName] breadcrumb.
-     */
-    data class Folder(
-        val name: String,
-        val colorHex: String,
-        val folderId: Int = 0,
-        val workspaceName: String? = null,
-        val isWorktree: Boolean = false,
-        val gitBranch: String? = null,
-        val path: String = "",
-        val depth: Int = 0,
-    ) : SectionKind
-
-    /** Non-pinned conversations whose folder isn't in the folder list (orphans). */
+    data object Folders : SectionKind
+    data object Chats : SectionKind
+    data object Recent : SectionKind
     data object Other : SectionKind
 }
 
-/** One conversation row, with its cross-folder tag pre-resolved. */
 data class SessionRowItem(
     val conversation: ConversationSummary,
-    /** Dim folder tag shown on cross-folder rows (Pinned/Other); `null` inside a
-     * folder group, where the folder is already the header. */
     val folderName: String?,
     val depth: Int = 0,
     val children: List<SessionRowItem> = emptyList(),
 )
 
-/** Which folder kind the Chats list is currently showing. */
 enum class SessionListScope {
     ALL,
     WORKSPACES,
     CHATS,
     ;
 
-    fun includes(folder: FolderDetail): Boolean = when (this) {
-        ALL -> true
-        WORKSPACES -> !folder.isChat
-        CHATS -> folder.isChat
-    }
+    fun includesWorkspace(): Boolean = this != CHATS
+    fun includesChats(): Boolean = this != WORKSPACES
 }
 
-/**
- * Compose [SessionGrouping]'s pure accessors into the ordered section list shown by
- * the Chats screen: Pinned (if any) → chat folders (so they are not buried under
- * workspaces) → workspace folders → Other (if any). [scope] hides the other kind
- * so the list can switch without scrolling.
- *
- * `folderName` is resolved here, once, for the cross-folder sections only, so each
- * row needs no map lookup at compose time. Pure and allocation-light; the view model
- * runs it on `Dispatchers.Default`.
- */
 fun buildSessionSections(
     folders: List<FolderDetail>,
     conversations: List<ConversationSummary>,
@@ -102,119 +81,142 @@ fun buildSessionSections(
         .filter { it.parentId != null && it.parentId in knownIds }
         .groupBy { it.parentId!! }
     val topLevel = visible.filter { it.parentId == null || it.parentId !in knownIds }
-    val out = ArrayList<SessionSection>()
-
-    fun inScope(conversation: ConversationSummary): Boolean {
-        val folder = folderById[conversation.folderId] ?: return scope == SessionListScope.ALL
-        return scope.includes(folder)
-    }
-
-    val pinned = SessionGrouping.pinned(topLevel).filter(::inScope)
-    if (pinned.isNotEmpty()) {
-        out += SessionSection(
-            id = "pinned",
-            kind = SectionKind.Pinned,
-            rows = pinned.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
-        )
-    }
-
+    val hasChatFolders = folders.any { it.isChat }
+    val knownFolderIds = folders.map { it.id }.toSet()
     val unpinned = topLevel.filter { !it.isPinned }
     val unpinnedByFolder = unpinned.groupBy { it.folderId }
     val worktreesByParent = folders.filter { it.parentId != null }.groupBy { it.parentId!! }
-    val knownFolderIds = folders.map { it.id }.toSet()
+    val out = ArrayList<SessionSection>()
 
-    val roots = folders.filter { it.parentId == null && scope.includes(it) }
-    val orderedRoots = when (scope) {
-        SessionListScope.ALL ->
-            SessionGrouping.sortedFolders(roots.filter { it.isChat }) +
-                SessionGrouping.sortedFolders(roots.filter { !it.isChat })
-        else -> SessionGrouping.sortedFolders(roots)
-    }
-    for (folder in orderedRoots) {
-        val section = folderSection(
-            folder = folder,
-            folders = folders,
-            unpinnedByFolder = unpinnedByFolder,
-            worktreesByParent = worktreesByParent,
-            childrenByParent = childrenByParent,
-            depth = 0,
-            searching = searching,
-        )
-        if (section != null) out += section
+    fun isChatConversation(conversation: ConversationSummary): Boolean {
+        val folder = folderById[conversation.folderId] ?: return false
+        return if (hasChatFolders) folder.isChat else true
     }
 
-    val orphanWorktrees = folders.filter {
-        it.parentId != null && it.parentId !in knownFolderIds && scope.includes(it)
-    }
-    for (folder in SessionGrouping.sortedFolders(orphanWorktrees)) {
-        val section = folderSection(
-            folder = folder,
-            folders = folders,
-            unpinnedByFolder = unpinnedByFolder,
-            worktreesByParent = worktreesByParent,
-            childrenByParent = childrenByParent,
-            depth = 0,
-            searching = searching,
-        )
-        if (section != null) out += section
+    if (scope.includesChats()) {
+        val pinned = SessionGrouping.pinned(topLevel).filter(::isChatConversation)
+        if (pinned.isNotEmpty()) {
+            out += SessionSection(
+                id = "pinned",
+                kind = SectionKind.Pinned,
+                rows = pinned.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
+            )
+        }
     }
 
-    val other = if (scope == SessionListScope.ALL) {
-        SessionGrouping.ungrouped(folders, unpinned)
-    } else {
-        emptyList()
+    if (scope.includesWorkspace()) {
+        val roots = SessionGrouping.sortedFolders(folders.filter { it.parentId == null && !it.isChat })
+        val entries = roots.mapNotNull { folder ->
+            folderEntry(
+                folder = folder,
+                folders = folders,
+                unpinnedByFolder = unpinnedByFolder,
+                worktreesByParent = worktreesByParent,
+                childrenByParent = childrenByParent,
+                depth = 0,
+                query = query,
+            )
+        }
+        if (entries.isNotEmpty()) {
+            out += SessionSection(id = "folders", kind = SectionKind.Folders, folders = entries)
+        }
     }
-    if (other.isNotEmpty()) {
-        out += SessionSection(
-            id = "other",
-            kind = SectionKind.Other,
-            rows = other.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
-        )
+
+    if (scope.includesChats()) {
+        val chatRows = unpinned
+            .filter(::isChatConversation)
+            .sortedByDescending { it.updatedAt }
+            .map { attachChildren(it, childrenByParent, folderName = if (hasChatFolders) null else folderNames[it.folderId], depth = 0) }
+        if (chatRows.isNotEmpty()) {
+            out += SessionSection(id = "chats", kind = SectionKind.Chats, rows = chatRows)
+        }
+    }
+
+    if (scope == SessionListScope.ALL && !searching) {
+        val recent = unpinned
+            .sortedByDescending { it.updatedAt }
+            .take(RECENT_LIMIT)
+            .map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) }
+        if (recent.isNotEmpty()) {
+            out += SessionSection(id = "recent", kind = SectionKind.Recent, rows = recent)
+        }
+    }
+
+    if (scope == SessionListScope.ALL) {
+        val other = SessionGrouping.ungrouped(folders, unpinned)
+        if (other.isNotEmpty()) {
+            out += SessionSection(
+                id = "other",
+                kind = SectionKind.Other,
+                rows = other.map { attachChildren(it, childrenByParent, folderNames[it.folderId], depth = 0) },
+            )
+        }
+    }
+
+    // Orphan worktrees (parent missing from the folder list) still belong in Folders.
+    if (scope.includesWorkspace()) {
+        val orphans = SessionGrouping.sortedFolders(
+            folders.filter { it.parentId != null && it.parentId !in knownFolderIds && !it.isChat },
+        ).mapNotNull { folder ->
+            folderEntry(
+                folder = folder,
+                folders = folders,
+                unpinnedByFolder = unpinnedByFolder,
+                worktreesByParent = worktreesByParent,
+                childrenByParent = childrenByParent,
+                depth = 0,
+                query = query,
+            )
+        }
+        if (orphans.isNotEmpty()) {
+            val existing = out.indexOfFirst { it.id == "folders" }
+            if (existing >= 0) {
+                val current = out[existing]
+                out[existing] = current.copy(folders = current.folders + orphans)
+            } else {
+                out += SessionSection(id = "folders", kind = SectionKind.Folders, folders = orphans)
+            }
+        }
     }
 
     return out
 }
 
-private fun folderSection(
+private fun folderEntry(
     folder: FolderDetail,
     folders: List<FolderDetail>,
     unpinnedByFolder: Map<Int, List<ConversationSummary>>,
     worktreesByParent: Map<Int, List<FolderDetail>>,
     childrenByParent: Map<Int, List<ConversationSummary>>,
     depth: Int,
-    searching: Boolean,
-): SessionSection? {
+    query: String,
+): FolderEntry? {
     val convs = (unpinnedByFolder[folder.id] ?: emptyList()).sortedByDescending { it.updatedAt }
     val isWorktree = FolderVisibility.isWorktree(folder)
     val workspaceName = if (isWorktree) FolderVisibility.displayName(folder, folders) else null
-    val nested = SessionGrouping.sortedFolders(worktreesByParent[folder.id] ?: emptyList()).mapNotNull { child ->
-        folderSection(
+    val children = SessionGrouping.sortedFolders(worktreesByParent[folder.id] ?: emptyList()).mapNotNull { child ->
+        folderEntry(
             folder = child,
             folders = folders,
             unpinnedByFolder = unpinnedByFolder,
             worktreesByParent = worktreesByParent,
             childrenByParent = childrenByParent,
             depth = depth + 1,
-            searching = searching,
+            query = query,
         )
     }
-    if (searching && convs.isEmpty() && nested.isEmpty()) return null
-    return SessionSection(
-        id = "folder-${folder.id}",
-        kind = SectionKind.Folder(
-            name = folder.name,
-            colorHex = folder.color,
-            folderId = folder.id,
-            workspaceName = workspaceName,
-            isWorktree = isWorktree,
-            gitBranch = folder.gitBranch,
-            path = folder.path,
-            depth = depth,
-        ),
-        rows = convs.map { attachChildren(it, childrenByParent, folderName = null, depth = depth) },
-        nested = nested,
+    val nameHit = query.isEmpty() ||
+        folder.name.contains(query, ignoreCase = true) ||
+        folder.path.contains(query, ignoreCase = true) ||
+        (folder.gitBranch?.contains(query, ignoreCase = true) == true) ||
+        (workspaceName?.contains(query, ignoreCase = true) == true)
+    if (query.isNotEmpty() && !nameHit && convs.isEmpty() && children.isEmpty()) return null
+    return FolderEntry(
+        folder = folder,
         depth = depth,
         breadcrumb = if (isWorktree) FolderVisibility.breadcrumb(folder, folders) else folder.name,
+        conversations = convs.map { attachChildren(it, childrenByParent, folderName = null, depth = depth + 1) },
+        children = children,
     )
 }
 

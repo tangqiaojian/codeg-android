@@ -220,7 +220,7 @@ data class SessionListUiState(
      * fields, so the decision stays atomic with the data and never flickers against
      * the separately-derived [SessionListViewModel.sections] flow.
      */
-    val isEmpty: Boolean get() = conversations.isEmpty()
+    val isEmpty: Boolean get() = conversations.isEmpty() && folders.isEmpty()
 }
 
 /** One folder and the (non-pinned) conversations shown under its group. */

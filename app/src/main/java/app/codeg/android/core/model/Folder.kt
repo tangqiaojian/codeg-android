@@ -1,7 +1,9 @@
 package app.codeg.android.core.model
 
 import app.codeg.android.core.model.wire.InstantSerializer
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonNames
 import java.time.Instant
 
 /**
@@ -12,6 +14,7 @@ import java.time.Instant
  * Decoded with the snake_case response `Json`, so camelCase properties map to
  * `git_branch` / `default_agent_type` / `last_opened_at` / `sort_order` etc.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class FolderDetail(
     val id: Int,
@@ -24,5 +27,6 @@ data class FolderDetail(
     val sortOrder: Int = 0,
     val color: String = "",
     val parentId: Int? = null,
+    @JsonNames("isChat")
     val isChat: Boolean = false,
 )

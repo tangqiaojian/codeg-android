@@ -87,6 +87,10 @@
     <string name="sessions_filter_chats">聊天</string>
     <string name="sessions_filter_folders_empty">没有文件夹会话</string>
     <string name="sessions_filter_chats_empty">没有聊天</string>
+    <string name="sessions_section_folders">文件夹</string>
+    <string name="sessions_section_chats">聊天</string>
+    <string name="sessions_section_recent">最近</string>
+    <string name="sessions_open_folder">打开文件夹</string>
     <string name="session_find">在会话中查找</string>
     <string name="session_find_placeholder">查找消息</string>
     <string name="session_find_previous">上一个匹配</string>

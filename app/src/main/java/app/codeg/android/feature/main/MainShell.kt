@@ -282,6 +282,7 @@ fun MainShell(appViewModel: AppViewModel, servers: List<ServerProfile>) {
                         onSelectServer = appViewModel::selectServer,
                         onManageServers = { nav.navigate(ROUTE_SERVERS) },
                         onOpenConversation = { id -> nav.navigate("conversation/$id") },
+                        onOpenFolder = { id -> nav.navigate("project/$id") },
                         onNewTask = { nav.navigate(ROUTE_NEW_TASK) },
                         onOpenTodos = { nav.navigate(ROUTE_TODOS) },
                         onOpenAutomations = { nav.navigate(ROUTE_AUTOMATIONS) },

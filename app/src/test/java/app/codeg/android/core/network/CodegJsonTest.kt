@@ -66,6 +66,14 @@ class CodegJsonTest {
     }
 
     @Test
+    fun `folder response also accepts camelCase isChat`() {
+        val folder = CodegJson.response.decodeFromString<FolderDetail>(
+            """{"id":2,"name":"chats","path":"/chats","isChat":true}""",
+        )
+        assertTrue(folder.isChat)
+    }
+
+    @Test
     fun `conversation summary decodes enums and counts`() {
         val c = CodegJson.response.decodeFromString<ConversationSummary>(
             """{"id":7,"folder_id":2,"title":"Fix auth","agent_type":"gemini",

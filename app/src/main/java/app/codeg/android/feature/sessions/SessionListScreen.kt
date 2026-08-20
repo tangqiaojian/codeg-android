@@ -26,9 +26,12 @@ import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dns
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Folder
+import androidx.compose.material.icons.rounded.FolderOpen
 import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inbox
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
@@ -65,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
@@ -74,7 +78,9 @@ import app.codeg.android.core.designsystem.component.InlineError
 import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.designsystem.theme.colorFromHex
+import app.codeg.android.core.designsystem.component.FolderBadge
 import app.codeg.android.core.model.ConversationSummary
+import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.feature.main.LocalBarsVisible
 
 /**
@@ -94,6 +100,7 @@ fun SessionListScreen(
     onSelectServer: (String) -> Unit,
     onManageServers: () -> Unit,
     onOpenConversation: (Int) -> Unit,
+    onOpenFolder: (Int) -> Unit,
     onNewTask: () -> Unit,
     onOpenTodos: () -> Unit,
     onOpenAutomations: () -> Unit,
@@ -110,6 +117,7 @@ fun SessionListScreen(
     // rotation / process death.
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var collapsedChildren by rememberSaveable { mutableStateOf(emptySet<Int>()) }
+    var expandedFolders by rememberSaveable { mutableStateOf(emptySet<Int>()) }
     val colors = CodegTheme.colors
     val selectedName = servers.firstOrNull { it.id == selectedId }?.name
         ?: stringResource(R.string.app_name)
@@ -252,13 +260,18 @@ fun SessionListScreen(
                                     sections = sections,
                                     collapsed = collapsed,
                                     collapsedChildren = collapsedChildren,
+                                    expandedFolders = expandedFolders,
                                     onToggleSection = { id ->
                                         collapsed = if (id in collapsed) collapsed - id else collapsed + id
                                     },
                                     onToggleChildren = { id ->
                                         collapsedChildren = if (id in collapsedChildren) collapsedChildren - id else collapsedChildren + id
                                     },
+                                    onToggleFolder = { id ->
+                                        expandedFolders = if (id in expandedFolders) expandedFolders - id else expandedFolders + id
+                                    },
                                     onOpenConversation = onOpenConversation,
+                                    onOpenFolder = onOpenFolder,
                                     onTogglePin = { conv -> viewModel.setPinned(conv, !conv.isPinned) },
                                     refreshError = ui.error,
                                     onRetry = viewModel::refresh,
@@ -365,9 +378,12 @@ private fun SessionList(
     sections: List<SessionSection>,
     collapsed: Set<String>,
     collapsedChildren: Set<Int>,
+    expandedFolders: Set<Int>,
     onToggleSection: (String) -> Unit,
     onToggleChildren: (Int) -> Unit,
+    onToggleFolder: (Int) -> Unit,
     onOpenConversation: (Int) -> Unit,
+    onOpenFolder: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
     refreshError: String?,
     onRetry: () -> Unit,
@@ -398,9 +414,12 @@ private fun SessionList(
                 section = section,
                 collapsed = collapsed,
                 collapsedChildren = collapsedChildren,
+                expandedFolders = expandedFolders,
                 onToggleSection = onToggleSection,
                 onToggleChildren = onToggleChildren,
+                onToggleFolder = onToggleFolder,
                 onOpenConversation = onOpenConversation,
+                onOpenFolder = onOpenFolder,
                 onTogglePin = onTogglePin,
             )
         }
@@ -411,43 +430,43 @@ private fun LazyListScope.sessionSectionItems(
     section: SessionSection,
     collapsed: Set<String>,
     collapsedChildren: Set<Int>,
+    expandedFolders: Set<Int>,
     onToggleSection: (String) -> Unit,
     onToggleChildren: (Int) -> Unit,
+    onToggleFolder: (Int) -> Unit,
     onOpenConversation: (Int) -> Unit,
+    onOpenFolder: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
 ) {
     val isCollapsed = section.id in collapsed
     item(key = "h-${section.id}", contentType = "header") {
-        val style = sectionStyle(section.kind, section.breadcrumb)
-        val folder = section.kind as? SectionKind.Folder
-        if (folder != null) {
-            HierarchySectionHeader(
-                icon = style.icon,
-                tint = style.tint,
-                label = style.label,
-                subtitle = style.subtitle,
-                count = section.count,
-                collapsed = isCollapsed,
-                onToggle = { onToggleSection(section.id) },
-                collapsible = section.count > 0,
-                depth = folder.depth,
-                emphasized = !folder.isWorktree,
-                modifier = Modifier.animateItem(),
-            )
-        } else {
-            CollapsibleSectionHeader(
-                icon = style.icon,
-                tint = style.tint,
-                label = style.label,
-                count = section.count,
-                collapsed = isCollapsed,
-                onToggle = { onToggleSection(section.id) },
-                collapsible = section.count > 0,
-                modifier = Modifier.animateItem(),
+        val style = sectionStyle(section.kind)
+        CollapsibleSectionHeader(
+            icon = style.icon,
+            tint = style.tint,
+            label = style.label,
+            count = section.count,
+            collapsed = isCollapsed,
+            onToggle = { onToggleSection(section.id) },
+            collapsible = section.count > 0,
+            modifier = Modifier.animateItem(),
+        )
+    }
+    if (isCollapsed) return
+    if (section.folders.isNotEmpty()) {
+        section.folders.forEach { entry ->
+            folderEntryItems(
+                entry = entry,
+                collapsedChildren = collapsedChildren,
+                expandedFolders = expandedFolders,
+                onToggleChildren = onToggleChildren,
+                onToggleFolder = onToggleFolder,
+                onOpenConversation = onOpenConversation,
+                onOpenFolder = onOpenFolder,
+                onTogglePin = onTogglePin,
             )
         }
-    }
-    if (!isCollapsed) {
+    } else {
         section.rows.forEach { row ->
             sessionRowItems(
                 row = row,
@@ -458,17 +477,117 @@ private fun LazyListScope.sessionSectionItems(
             )
         }
     }
-    // Worktree groups stay visible when the workspace header is collapsed so
-    // nested history is not wiped by a single tap on the root card.
-    section.nested.forEach { child ->
-        sessionSectionItems(
-            section = child,
-            collapsed = collapsed,
+}
+
+private fun LazyListScope.folderEntryItems(
+    entry: FolderEntry,
+    collapsedChildren: Set<Int>,
+    expandedFolders: Set<Int>,
+    onToggleChildren: (Int) -> Unit,
+    onToggleFolder: (Int) -> Unit,
+    onOpenConversation: (Int) -> Unit,
+    onOpenFolder: (Int) -> Unit,
+    onTogglePin: (ConversationSummary) -> Unit,
+) {
+    val expanded = entry.folder.id in expandedFolders
+    item(key = "folder-${entry.folder.id}", contentType = "folder") {
+        SessionListFolderRow(
+            folder = entry.folder,
+            depth = entry.depth,
+            breadcrumb = entry.breadcrumb,
+            sessionCount = entry.sessionCount,
+            expanded = expanded,
+            onToggle = {
+                if (entry.sessionCount > 0) onToggleFolder(entry.folder.id)
+                else onOpenFolder(entry.folder.id)
+            },
+            onOpenFolder = { onOpenFolder(entry.folder.id) },
+            modifier = Modifier.animateItem(),
+        )
+    }
+    if (expanded) {
+        entry.conversations.forEach { row ->
+            sessionRowItems(
+                row = row,
+                collapsedChildren = collapsedChildren,
+                onToggleChildren = onToggleChildren,
+                onOpenConversation = onOpenConversation,
+                onTogglePin = onTogglePin,
+            )
+        }
+    }
+    // Worktrees stay listed under the workspace even when its sessions are folded.
+    entry.children.forEach { child ->
+        folderEntryItems(
+            entry = child,
             collapsedChildren = collapsedChildren,
-            onToggleSection = onToggleSection,
+            expandedFolders = expandedFolders,
             onToggleChildren = onToggleChildren,
+            onToggleFolder = onToggleFolder,
             onOpenConversation = onOpenConversation,
+            onOpenFolder = onOpenFolder,
             onTogglePin = onTogglePin,
+        )
+    }
+}
+
+@Composable
+private fun SessionListFolderRow(
+    folder: FolderDetail,
+    depth: Int,
+    breadcrumb: String?,
+    sessionCount: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    onOpenFolder: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val colors = CodegTheme.colors
+    val tile = colorFromHex(folder.color) ?: colors.accent
+    Row(
+        modifier
+            .fillMaxWidth()
+            .padding(start = (depth * 16).dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onToggle)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        FolderBadge(color = tile, size = 32.dp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                folder.name,
+                style = MaterialTheme.typography.bodyLarge,
+                color = colors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val subtitle = buildList {
+                breadcrumb?.takeIf { it.isNotBlank() && it != folder.name }?.let { add(it) }
+                folder.gitBranch?.takeIf { it.isNotBlank() }?.let { add(it) }
+            }.joinToString(" · ")
+            if (subtitle.isNotBlank()) {
+                Text(subtitle, fontSize = 11.sp, color = colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        if (sessionCount > 0) {
+            Icon(
+                if (expanded) Icons.Rounded.ExpandMore else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                contentDescription = stringResource(if (expanded) R.string.sessions_collapse else R.string.sessions_expand),
+                tint = colors.textTertiary,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Icon(
+            Icons.Rounded.FolderOpen,
+            contentDescription = stringResource(R.string.sessions_open_folder),
+            tint = colors.textSecondary,
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onOpenFolder)
+                .padding(6.dp),
         )
     }
 }
@@ -520,7 +639,7 @@ private data class SectionStyle(
 )
 
 @Composable
-private fun sectionStyle(kind: SectionKind, breadcrumb: String? = null): SectionStyle {
+private fun sectionStyle(kind: SectionKind): SectionStyle {
     val colors = CodegTheme.colors
     return when (kind) {
         SectionKind.Pinned -> SectionStyle(
@@ -528,24 +647,21 @@ private fun sectionStyle(kind: SectionKind, breadcrumb: String? = null): Section
             tint = colors.accent,
             label = stringResource(R.string.sessions_pinned),
         )
-        is SectionKind.Folder -> {
-            val kindLabel = when {
-                kind.isWorktree -> stringResource(R.string.sessions_worktree)
-                else -> stringResource(R.string.sessions_workspace)
-            }
-            val subtitle = buildList {
-                add(kindLabel)
-                breadcrumb?.takeIf { kind.isWorktree && it.isNotBlank() }?.let { add(it) }
-                kind.gitBranch?.takeIf { !kind.isWorktree && it.isNotBlank() }?.let { add(it) }
-                kind.path.takeIf { it.isNotBlank() && !kind.isWorktree }?.let { add(it) }
-            }.joinToString(" · ")
-            SectionStyle(
-                icon = Icons.Rounded.Folder,
-                tint = colorFromHex(kind.colorHex) ?: colors.accent,
-                label = kind.name,
-                subtitle = subtitle,
-            )
-        }
+        SectionKind.Folders -> SectionStyle(
+            icon = Icons.Rounded.Folder,
+            tint = colors.accent,
+            label = stringResource(R.string.sessions_section_folders),
+        )
+        SectionKind.Chats -> SectionStyle(
+            icon = Icons.Rounded.Forum,
+            tint = colors.accent,
+            label = stringResource(R.string.sessions_section_chats),
+        )
+        SectionKind.Recent -> SectionStyle(
+            icon = Icons.Rounded.History,
+            tint = colors.textSecondary,
+            label = stringResource(R.string.sessions_section_recent),
+        )
         SectionKind.Other -> SectionStyle(
             icon = Icons.Rounded.Inbox,
             tint = colors.textSecondary,
