@@ -65,6 +65,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import android.widget.Toast
+import app.codeg.android.feature.live.TaskStatusWidgetProvider
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -235,6 +237,7 @@ private fun AppearanceSettings(viewModel: SettingsViewModel) {
 private fun LiveStatusSettings(viewModel: SettingsViewModel) {
     val colors = CodegTheme.colors
     val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val context = LocalContext.current
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -277,7 +280,15 @@ private fun LiveStatusSettings(viewModel: SettingsViewModel) {
                 trailingContent = {
                     Switch(
                         checked = settings.liveWidget,
-                        onCheckedChange = viewModel::setLiveWidget,
+                        onCheckedChange = { on ->
+                            viewModel.setLiveWidget(on)
+                            if (on) {
+                                val sent = TaskStatusWidgetProvider.requestPin(context)
+                                if (!sent) {
+                                    Toast.makeText(context, R.string.live_status_widget_pin_unsupported, Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        },
                         colors = SwitchDefaults.colors(checkedTrackColor = colors.accent, checkedThumbColor = colors.onAccent),
                     )
                 },
@@ -287,6 +298,17 @@ private fun LiveStatusSettings(viewModel: SettingsViewModel) {
                     supportingColor = colors.textTertiary,
                 ),
             )
+        }
+        androidx.compose.material3.TextButton(
+            onClick = {
+                viewModel.setLiveWidget(true)
+                val sent = TaskStatusWidgetProvider.requestPin(context)
+                if (!sent) {
+                    Toast.makeText(context, R.string.live_status_widget_pin_unsupported, Toast.LENGTH_LONG).show()
+                }
+            },
+        ) {
+            Text(stringResource(R.string.live_status_widget_add), color = colors.accent)
         }
         Text(stringResource(R.string.live_status_xiaomi_note), color = colors.textTertiary, fontSize = 12.sp)
     }

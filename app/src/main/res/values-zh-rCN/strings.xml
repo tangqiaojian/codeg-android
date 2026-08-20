@@ -976,7 +976,9 @@
     <string name="live_status_notification_title">通知栏和刘海</string>
     <string name="live_status_notification_subtitle">持续显示最近正在运行或待审核的任务。小米澎湃 OS 上可表现为焦点通知/超级岛。</string>
     <string name="live_status_widget_title">桌面卡片</string>
-    <string name="live_status_widget_subtitle">打开后，请到桌面小组件里添加「实时状态」。</string>
+    <string name="live_status_widget_subtitle">打开开关后点「添加到桌面」。小米桌面：双指捏合 → 小部件 → 搜索「安卓小部件」或 Codeg。</string>
+    <string name="live_status_widget_add">添加到桌面</string>
+    <string name="live_status_widget_pin_unsupported">系统没有弹出添加框。小米请用：桌面双指捏合 → 小部件 → 搜索「安卓小部件」或 Codeg。</string>
     <string name="live_status_widget_kicker">Codeg</string>
     <string name="live_status_xiaomi_note">小米超级岛完整样式可能需要向小米申请焦点通知权限。未开通时仍会以普通常驻通知和桌面卡片显示同一状态。</string>
     <string name="live_status_channel_name">实时任务</string>

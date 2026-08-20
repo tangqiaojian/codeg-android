@@ -18,17 +18,41 @@ import dagger.hilt.components.SingletonComponent
 
 class TaskStatusWidgetProvider : AppWidgetProvider() {
 
+    override fun onReceive(context: Context, intent: Intent) {
+        if (MIUI_UPDATE == intent.action) {
+            val ids = intent.getIntArrayExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS)
+                ?: AppWidgetManager.getInstance(context)
+                    .getAppWidgetIds(ComponentName(context, TaskStatusWidgetProvider::class.java))
+            onUpdate(context, AppWidgetManager.getInstance(context), ids)
+            return
+        }
+        super.onReceive(context, intent)
+    }
+
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
-        val coordinator = entry(context).coordinator()
-        bind(context, appWidgetManager, appWidgetIds, coordinator.snapshot)
-        coordinator.requestRefresh()
+        if (appWidgetIds.isEmpty()) return
+        val snapshot = runCatching { entry(context).coordinator().snapshot }.getOrDefault(LiveTaskSnapshot())
+        bind(context, appWidgetManager, appWidgetIds, snapshot)
+        runCatching { entry(context).coordinator().requestRefresh() }
     }
 
     override fun onEnabled(context: Context) {
-        entry(context).coordinator().requestRefresh()
+        runCatching { entry(context).coordinator().requestRefresh() }
     }
 
     companion object {
+        const val MIUI_UPDATE = "miui.appwidget.action.APPWIDGET_UPDATE"
+
+        fun requestPin(context: Context): Boolean {
+            val manager = AppWidgetManager.getInstance(context)
+            if (!manager.isRequestPinAppWidgetSupported) return false
+            return manager.requestPinAppWidget(
+                ComponentName(context, TaskStatusWidgetProvider::class.java),
+                null,
+                null,
+            )
+        }
+
         fun publish(context: Context, snapshot: LiveTaskSnapshot) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(ComponentName(context, TaskStatusWidgetProvider::class.java))

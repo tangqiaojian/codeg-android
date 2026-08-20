@@ -44,10 +44,12 @@
 
         <receiver
             android:name=".feature.live.TaskStatusWidgetProvider"
+            android:enabled="true"
             android:exported="true"
             android:label="@string/live_status_widget_title">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="miui.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
             <meta-data
                 android:name="android.appwidget.provider"
