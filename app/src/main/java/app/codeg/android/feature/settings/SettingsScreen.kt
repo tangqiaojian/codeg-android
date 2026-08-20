@@ -69,6 +69,8 @@ import app.codeg.android.core.designsystem.theme.AccentPalette
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.datastore.ThemeMode
 import app.codeg.android.core.model.AgentType
+import app.codeg.android.feature.update.AppUpdatePanel
+import app.codeg.android.feature.update.AppUpdateViewModel
 
 private enum class SettingsLeaf(@StringRes val titleRes: Int, val icon: ImageVector, @StringRes val groupRes: Int, val implemented: Boolean) {
     APPEARANCE(R.string.settings_leaf_appearance, Icons.Rounded.Brush, R.string.settings_group_personalization, true),
@@ -223,15 +225,29 @@ private fun AppearanceSettings(viewModel: SettingsViewModel) {
 private fun AboutScreen(viewModel: SettingsViewModel) {
     val colors = CodegTheme.colors
     val about by viewModel.about.collectAsStateWithLifecycle()
+    val updateViewModel: AppUpdateViewModel = hiltViewModel()
+    val updateUi by updateViewModel.ui.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val appVersion = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "—"
     }
-    Column(Modifier.fillMaxSize().padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
         Text(stringResource(R.string.app_name), style = MaterialTheme.typography.headlineSmall, color = colors.textPrimary)
         Text(stringResource(R.string.settings_version, appVersion), fontSize = 13.sp, color = colors.textSecondary)
         about.serverName?.let { Text(stringResource(R.string.settings_server, it), fontSize = 13.sp, color = colors.textSecondary) }
         about.serverVersion?.let { Text(stringResource(R.string.settings_codeg_version, it), fontSize = 13.sp, color = colors.textTertiary) }
+        AppUpdatePanel(
+            ui = updateUi,
+            onCheck = { updateViewModel.check(force = true) },
+            onDownload = updateViewModel::download,
+            onCancel = updateViewModel::cancel,
+            onInstall = { updateViewModel.install(context, it) },
+            modifier = Modifier.padding(top = 8.dp),
+        )
         Text(
             stringResource(R.string.settings_about_description),
             fontSize = 13.sp, color = colors.textTertiary, modifier = Modifier.padding(top = 8.dp),

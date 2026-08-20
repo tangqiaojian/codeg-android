@@ -450,6 +450,26 @@
     <string name="settings_server">Server: %1$s</string>
     <string name="settings_codeg_version">codeg %1$s</string>
     <string name="settings_about_description">A native Android client for the codeg multi-agent coding server.</string>
+    <string name="app_update_section">App update</string>
+    <string name="app_update_check">Check for updates</string>
+    <string name="app_update_checking">Checking…</string>
+    <string name="app_update_up_to_date">This app is up to date.</string>
+    <string name="app_update_available">Version %1$s is available</string>
+    <string name="app_update_download">Download and install</string>
+    <string name="app_update_downloading">Downloading %1$s / %2$s</string>
+    <string name="app_update_install">Install</string>
+    <string name="app_update_later">Later</string>
+    <string name="app_update_cancel">Cancel</string>
+    <string name="app_update_retry">Retry</string>
+    <string name="app_update_ready">The package is ready. Android will ask you to install it.</string>
+    <string name="app_update_allow_unknown">Allow installing unknown apps for Codeg, then tap Install.</string>
+    <string name="app_update_allow_unknown_action">Open install settings</string>
+    <string name="app_update_error_network">Could not reach the update server. Try another network.</string>
+    <string name="app_update_error_no_apk">The latest release has no installable package.</string>
+    <string name="app_update_error_checksum">The downloaded package failed verification and was deleted.</string>
+    <string name="app_update_error_save">Could not save the package. Check free storage.</string>
+    <string name="app_update_error_install_blocked">Android blocked the installer. Allow unknown apps for Codeg and try again.</string>
+    <string name="app_update_error_unknown">Could not install the update.</string>
     <string name="settings_coming_soon">Coming in milestone M9.</string>
     <string name="settings_licenses_unavailable">Unable to load open-source notices.</string>
 

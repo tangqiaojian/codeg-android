@@ -17,6 +17,7 @@ import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.feature.main.MainShell
 import app.codeg.android.feature.onboarding.OnboardingScreen
 import app.codeg.android.feature.server.ServerEditorScreen
+import app.codeg.android.feature.update.AppUpdateHost
 
 /**
  * Root of the app: applies the theme (from persisted appearance settings) and the
@@ -35,7 +36,10 @@ fun CodegApp(appViewModel: AppViewModel = hiltViewModel()) {
             val servers by appViewModel.servers.collectAsStateWithLifecycle()
             when (val list = servers) {
                 null -> Splash()
-                else -> if (list.isEmpty()) OnboardingRoot() else MainShell(appViewModel, list)
+                else -> Box(Modifier.fillMaxSize()) {
+                    if (list.isEmpty()) OnboardingRoot() else MainShell(appViewModel, list)
+                    AppUpdateHost()
+                }
             }
         }
     }
