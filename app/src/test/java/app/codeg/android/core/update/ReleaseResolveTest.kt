@@ -2,6 +2,7 @@ package app.codeg.android.core.update
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ReleaseResolveTest {
@@ -59,5 +60,25 @@ class ReleaseResolveTest {
         assertEquals("0.4.0", update.version)
         assertEquals("v0.4.0-beta", update.tag)
         assertEquals(betaApk.browserDownloadUrl, update.apkUrl)
+    }
+
+    @Test
+    fun `1_4_0_beta is offered to 1_3_1 even with numeric compare`() {
+        val betaApk = GithubAsset(
+            name = "codeg-android-v1.4.0-beta.apk",
+            browserDownloadUrl = "https://github.com/tangqiaojian/codeg-android/releases/download/v1.4.0-beta/codeg-android-v1.4.0-beta.apk",
+            size = 70_000_000,
+        )
+        val release = GithubRelease(
+            tagName = "v1.4.0-beta",
+            body = "In-app update from 1.3.1",
+            assets = listOf(betaApk),
+        )
+        val update = resolveAvailableUpdate("1.3.1", release)!!
+        assertEquals("1.4.0", update.version)
+        assertEquals("v1.4.0-beta", update.tag)
+        val remote = AppVersion.parse(release.tagName)!!
+        val current = AppVersion.parse("1.3.1")!!
+        assertTrue(remote > current)
     }
 }

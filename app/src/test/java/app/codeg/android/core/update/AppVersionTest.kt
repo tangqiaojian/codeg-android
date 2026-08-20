@@ -36,6 +36,11 @@ class AppVersionTest {
         assertFalse(AppVersion.parse("0.4.0")!!.isNewerThan(AppVersion.parse("0.4.0-beta")!!))
         assertFalse(AppVersion.parse("0.3.9")!!.isNewerThan(AppVersion.parse("1.3.1")!!))
         assertFalse(AppVersion.parse("1.3.1")!!.isNewerThan(AppVersion.parse("0.4.0-beta")!!))
+        // Field 1.3.1 clients only have numeric `>` and will ignore 0.4.0-beta.
+        assertFalse(AppVersion.parse("0.4.0-beta")!! > AppVersion.parse("1.3.1")!!)
+        assertTrue(AppVersion.parse("1.4.0-beta")!! > AppVersion.parse("1.3.1")!!)
+        assertTrue(AppVersion.parse("1.4.0-beta")!!.isNewerThan(AppVersion.parse("1.3.1")!!))
+        assertTrue(AppVersion.parse("1.4.0-beta")!!.isNewerThan(AppVersion.parse("0.4.0-beta")!!))
     }
 
     @Test

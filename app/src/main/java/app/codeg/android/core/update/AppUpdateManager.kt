@@ -60,7 +60,7 @@ class AppUpdateManager(
             val currentVer = AppVersion.parse(current)
             _ui.value = when {
                 update != null -> AppUpdateUi.Available(update)
-                remoteVer != null && currentVer != null && remoteVer <= currentVer ->
+                remoteVer != null && currentVer != null && !remoteVer.isNewerThan(currentVer) ->
                     AppUpdateUi.UpToDate(current)
                 else -> AppUpdateUi.Error(AppUpdateError.NO_APK)
             }

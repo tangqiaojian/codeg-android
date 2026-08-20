@@ -41,6 +41,39 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun `1_3_1 check surfaces 1_4_0_beta`() = runTest(dispatcher) {
+        val remote = FakeRemote(
+            json = """
+                {"tag_name":"v1.4.0-beta","body":"beta","draft":false,"prerelease":false,"assets":[
+                  {"name":"codeg-android-v1.4.0-beta.apk","browser_download_url":"https://example.com/app.apk","size":9}
+                ]}
+            """.trimIndent(),
+        )
+        val mgr = manager(remote, version = "1.3.1")
+        mgr.check(force = true)
+        val ui = mgr.ui.value as AppUpdateUi.Available
+        assertEquals("1.4.0", ui.update.version)
+        assertEquals("v1.4.0-beta", ui.update.tag)
+    }
+
+    @Test
+    fun `1_3_1 check treats 0_4_0_beta as up to date under numeric compare`() = runTest(dispatcher) {
+        val remote = FakeRemote(
+            json = """
+                {"tag_name":"v0.4.0-beta","body":"beta","draft":false,"prerelease":false,"assets":[
+                  {"name":"codeg-android-v0.4.0-beta.apk","browser_download_url":"https://example.com/app.apk","size":9}
+                ]}
+            """.trimIndent(),
+        )
+        val mgr = manager(remote, version = "1.3.1")
+        mgr.check(force = true)
+        // New clients offer 0.4.0-beta via isNewerThan. This documents that a
+        // 1.3.1 field build using numeric `>` would have shown UpToDate instead.
+        assertTrue(mgr.ui.value is AppUpdateUi.Available)
+        assertFalse(AppVersion.parse("0.4.0-beta")!! > AppVersion.parse("1.3.1")!!)
+    }
+
+    @Test
     fun `skips the network when the interval has not elapsed`() = runTest(dispatcher) {
         val remote = FakeRemote(json = releaseJson())
         val prefs = MemoryPrefs(lastCheck = 999_000L)
