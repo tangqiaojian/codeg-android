@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Codeg WebParity</string>
+    <string name="app_name">Codeg</string>
 
     <!-- Onboarding -->
     <string name="onboarding_title">Codeg</string>
@@ -980,11 +980,12 @@
     <string name="live_status_notification_title">Status bar &amp; notch</string>
     <string name="live_status_notification_subtitle">Ongoing notification of the latest running or review task. On Xiaomi HyperOS this can appear as a focus / island capsule.</string>
     <string name="live_status_widget_title">Home widget</string>
-    <string name="live_status_widget_subtitle">Turn on, then tap Add to home screen. On Xiaomi, widgets may also be under pinch-home → Widgets → search “Android widgets” / Codeg.</string>
+    <string name="live_status_widget_picker_name">Codeg live task</string>
+    <string name="live_status_widget_subtitle">Turn on, then tap Add to home screen. Xiaomi\'s widget search only lists Xiaomi-certified widgets — searching “Codeg” there will find nothing. Open Widgets → search “Android widgets” → Codeg, or long-press the Codeg app icon.</string>
     <string name="live_status_widget_add">Add to home screen</string>
-    <string name="live_status_widget_pin_unsupported">Couldn\'t open the pin dialog. On Xiaomi: pinch the home screen → Widgets → search Android widgets or “Codeg”.</string>
+    <string name="live_status_widget_pin_unsupported">Couldn\'t open the pin dialog. Xiaomi: pinch the home screen → Widgets → search “Android widgets” (not Codeg) → Codeg.</string>
     <string name="live_status_widget_kicker">Codeg</string>
-    <string name="live_status_xiaomi_note">Xiaomi island styling may require HyperOS focus-notification permission from Xiaomi. Without it, the same live status still shows as a normal ongoing notification and widget.</string>
+    <string name="live_status_xiaomi_note">Xiaomi island styling may require HyperOS focus-notification permission from Xiaomi. Without it, the same live status still shows as a normal ongoing notification and widget. Native home widgets live under “Android widgets”, not the Xiaomi widget gallery.</string>
     <string name="live_status_channel_name">Live task</string>
     <string name="live_status_channel_desc">Latest dispatched agent task</string>
     <string name="live_status_idle_title">No active task</string>

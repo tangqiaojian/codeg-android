@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Codeg WebParity</string>
+    <string name="app_name">Codeg</string>
 
     <!-- Onboarding -->
     <string name="onboarding_title">Codeg</string>
@@ -980,11 +980,12 @@
     <string name="live_status_notification_title">通知栏和刘海</string>
     <string name="live_status_notification_subtitle">持续显示最近正在运行或待审核的任务。小米澎湃 OS 上可表现为焦点通知/超级岛。</string>
     <string name="live_status_widget_title">桌面卡片</string>
-    <string name="live_status_widget_subtitle">打开开关后点「添加到桌面」。小米桌面：双指捏合 → 小部件 → 搜索「安卓小部件」或 Codeg。</string>
+    <string name="live_status_widget_picker_name">Codeg 实时任务</string>
+    <string name="live_status_widget_subtitle">打开开关后点「添加到桌面」。小米「小部件」搜索只显示已上架的小米小部件，搜 Codeg 找不到是正常的。请点搜索里的「安卓小部件」，再找 Codeg；或长按桌面上的 Codeg 图标。</string>
     <string name="live_status_widget_add">添加到桌面</string>
-    <string name="live_status_widget_pin_unsupported">系统没有弹出添加框。小米请用：桌面双指捏合 → 小部件 → 搜索「安卓小部件」或 Codeg。</string>
+    <string name="live_status_widget_pin_unsupported">系统没有弹出添加框。小米：桌面双指捏合 → 小部件 → 搜索框点「安卓小部件」（不要搜 Codeg）→ Codeg。</string>
     <string name="live_status_widget_kicker">Codeg</string>
-    <string name="live_status_xiaomi_note">小米超级岛完整样式可能需要向小米申请焦点通知权限。未开通时仍会以普通常驻通知和桌面卡片显示同一状态。</string>
+    <string name="live_status_xiaomi_note">小米超级岛完整样式可能需要向小米申请焦点通知权限。未开通时仍会以普通常驻通知和桌面卡片显示同一状态。原生桌面卡片在「安卓小部件」里，不在小米小组件中心。</string>
     <string name="live_status_channel_name">实时任务</string>
     <string name="live_status_channel_desc">最新下发的智能体任务</string>
     <string name="live_status_idle_title">暂无进行中的任务</string>
