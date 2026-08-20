@@ -81,11 +81,12 @@ fun CollapsibleSectionHeader(
     ) {
         // Same 26dp diameter as the row AgentAvatars (SessionRow), so the group icon
         // matches the agent icons and the big title lines up with the row titles.
-        SectionBadgeIcon(icon = icon, tint = tint, size = 26.dp)
+        SectionBadgeIcon(icon = icon, tint = tint, size = 18.dp)
         Text(
             text = label,
-            style = MaterialTheme.typography.titleLarge,
-            color = colors.textPrimary,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = colors.textSecondary,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),

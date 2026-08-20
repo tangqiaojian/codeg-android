@@ -111,6 +111,7 @@ import app.codeg.android.core.model.GitStatusBody
 import app.codeg.android.core.model.GitStatusEntry
 import app.codeg.android.core.model.PathFileBody
 import app.codeg.android.core.model.OpenWorktreeFolderBody
+import app.codeg.android.core.model.FolderIdBody
 import app.codeg.android.core.model.PathBody
 import app.codeg.android.core.model.ReadFilePreviewBody
 import app.codeg.android.core.model.ResolveWorktreeFolderBody
@@ -580,6 +581,11 @@ class CodegClient(
     /** Register/open a folder by absolute path; returns the upserted [FolderDetail]. */
     suspend fun openFolder(path: String): FolderDetail =
         decode(send("open_folder", encode(PathBody(path))), FolderDetail.serializer())
+
+    /** Unregister a folder from the sidebar (server `close_folder`). Does not delete files. */
+    suspend fun closeFolder(folderId: Int) {
+        send("close_folder", encode(FolderIdBody(folderId)))
+    }
 
     /** The server's home directory (bare JSON string). */
     suspend fun getHomeDirectory(): String =

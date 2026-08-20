@@ -6,26 +6,33 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Bolt
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.FolderOpen
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.Forum
-import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -36,11 +43,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -80,9 +90,8 @@ import app.codeg.android.feature.todos.TodosScreen
 import app.codeg.android.feature.todos.WorkTaskToolsScreen
 
 /**
- * Bottom-navigation destinations. Each carries an outlined icon (unselected) and
- * a filled icon (selected) — the Material 3 / GitHub / ChatGPT convention where
- * the active tab fills in.
+ * Bottom-navigation destinations. Outlined when idle, filled when selected —
+ * matching iOS TabBar SF Symbols (bubble, folder, bolt, search, gear).
  */
 enum class HomeTab(
     val route: String,
@@ -90,8 +99,8 @@ enum class HomeTab(
     val icon: ImageVector,
     val selectedIcon: ImageVector,
 ) {
-    CHATS("chats", R.string.tab_chats, Icons.Outlined.Forum, Icons.Rounded.Forum),
-    FOLDERS("folders", R.string.tab_folders, Icons.Outlined.FolderOpen, Icons.Rounded.FolderOpen),
+    CHATS("chats", R.string.tab_chats, Icons.Outlined.ChatBubbleOutline, Icons.Rounded.ChatBubble),
+    FOLDERS("folders", R.string.tab_folders, Icons.Outlined.Folder, Icons.Rounded.Folder),
     ACTIVITY("activity", R.string.tab_activity, Icons.Outlined.Bolt, Icons.Rounded.Bolt),
     SEARCH("search", R.string.tab_search, Icons.Outlined.Search, Icons.Rounded.Search),
     SETTINGS("settings", R.string.tab_settings, Icons.Outlined.Settings, Icons.Rounded.Settings),
@@ -447,7 +456,7 @@ private fun CodegNavRail(currentRoute: String?, onSelect: (HomeTab) -> Unit) {
                         selectedTextColor = colors.accent,
                         unselectedIconColor = colors.textTertiary,
                         unselectedTextColor = colors.textTertiary,
-                        indicatorColor = colors.accent.copy(alpha = 0.20f),
+                        indicatorColor = Color.Transparent,
                     ),
                 )
             }
@@ -466,40 +475,46 @@ private fun CodegBottomBar(
     modifier: Modifier = Modifier,
 ) {
     val colors = CodegTheme.colors
-    androidx.compose.foundation.layout.Column(modifier) {
-        // A hairline that delineates the bar from the content above it, the way
-        // GitHub / Telegram / ChatGPT separate their bottom navigation.
-        HorizontalDivider(thickness = androidx.compose.ui.unit.Dp.Hairline, color = colors.surfaceStroke)
-        NavigationBar(
-            // Fully transparent so the CodegBackground (base + both glows) flows
-            // uninterrupted to the bottom edge. A translucent fill is pointless in
-            // light mode (elevated #FFFFFF and base #F2F4F6 are both near-white, so it
-            // still reads as a white slab); letting the canvas itself show through is
-            // what actually makes the tabs continuous with the content above them.
-            containerColor = Color.Transparent,
-            tonalElevation = 0.dp,
+    val barFill = colors.bgElevated.copy(alpha = if (colors.isDark) 0.92f else 0.96f)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .background(barFill)
+            .navigationBarsPadding(),
+    ) {
+        HorizontalDivider(thickness = CodegTheme.dimens.hairlineWidth, color = colors.hairline)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .height(49.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
             HomeTab.entries.forEach { tab ->
                 val selected = currentRoute == tab.route
-                NavigationBarItem(
-                    selected = selected,
-                    onClick = { onSelect(tab) },
-                    icon = {
-                        Icon(
-                            if (selected) tab.selectedIcon else tab.icon,
-                            contentDescription = stringResource(tab.label),
-                        )
-                    },
-                    label = { Text(stringResource(tab.label)) },
-                    alwaysShowLabel = true,
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = colors.accent,
-                        selectedTextColor = colors.accent,
-                        unselectedIconColor = colors.textTertiary,
-                        unselectedTextColor = colors.textTertiary,
-                        indicatorColor = colors.accent.copy(alpha = 0.20f),
-                    ),
-                )
+                val tint = if (selected) colors.accent else colors.textTertiary
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onSelect(tab) },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = if (selected) tab.selectedIcon else tab.icon,
+                        contentDescription = stringResource(tab.label),
+                        tint = tint,
+                        modifier = Modifier.size(25.dp),
+                    )
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = stringResource(tab.label),
+                        color = tint,
+                        fontSize = 10.sp,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        maxLines = 1,
+                    )
+                }
             }
         }
     }

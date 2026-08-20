@@ -1,7 +1,9 @@
 package app.codeg.android.feature.projects
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,16 +21,19 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.CloudDownload
 import androidx.compose.material.icons.rounded.CreateNewFolder
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.FolderOpen
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -73,6 +78,7 @@ fun ProjectListScreen(
     var menuOpen by remember { mutableStateOf(false) }
     var showBrowser by remember { mutableStateOf(false) }
     var showClone by remember { mutableStateOf(false) }
+    var pendingClose by remember { mutableStateOf<FolderDetail?>(null) }
 
     Scaffold(
         containerColor = Color.Transparent,
@@ -80,34 +86,34 @@ fun ProjectListScreen(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.tab_folders)) },
+                actions = {
+                    Box {
+                        IconButton(onClick = { menuOpen = true }) {
+                            Icon(
+                                Icons.Rounded.Add,
+                                contentDescription = stringResource(R.string.projects_add),
+                                tint = colors.accent,
+                            )
+                        }
+                        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.projects_open_folder)) },
+                                leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
+                                onClick = { menuOpen = false; showBrowser = true },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.projects_clone_repo)) },
+                                leadingIcon = { Icon(Icons.Rounded.CloudDownload, null) },
+                                onClick = { menuOpen = false; showClone = true },
+                            )
+                        }
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     titleContentColor = colors.textPrimary,
                 ),
             )
-        },
-        floatingActionButton = {
-            Box {
-                FloatingActionButton(
-                    onClick = { menuOpen = true },
-                    containerColor = colors.accent,
-                    contentColor = colors.onAccent,
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = stringResource(R.string.projects_add))
-                }
-                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.projects_open_folder)) },
-                        leadingIcon = { Icon(Icons.Rounded.CreateNewFolder, null) },
-                        onClick = { menuOpen = false; showBrowser = true },
-                    )
-                    DropdownMenuItem(
-                        text = { Text(stringResource(R.string.projects_clone_repo)) },
-                        leadingIcon = { Icon(Icons.Rounded.CloudDownload, null) },
-                        onClick = { menuOpen = false; showClone = true },
-                    )
-                }
-            }
         },
     ) { padding ->
         Box(Modifier.padding(padding).fillMaxSize()) {
@@ -125,7 +131,7 @@ fun ProjectListScreen(
                 else -> PullToRefreshBox(isRefreshing = ui.refreshing, onRefresh = viewModel::refresh, modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         Modifier.fillMaxSize(),
-                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 88.dp),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 24.dp),
                     ) {
                         // One continuous grouped surface holding every folder as a
                         // borderless row split by inset hairlines — the iOS grouped-list
@@ -138,7 +144,12 @@ fun ProjectListScreen(
                                     if (index > 0) {
                                         HorizontalDivider(color = colors.hairline, modifier = Modifier.padding(start = 66.dp))
                                     }
-                                    FolderRow(folder, ui.runningCount(folder.id)) { onOpenFolder(folder.id) }
+                                    FolderRow(
+                                        folder = folder,
+                                        running = ui.runningCount(folder.id),
+                                        onClick = { onOpenFolder(folder.id) },
+                                        onClose = { pendingClose = folder },
+                                    )
                                 }
                             }
                         }
@@ -158,6 +169,27 @@ fun ProjectListScreen(
             onDismiss = { showBrowser = false },
         )
     }
+    pendingClose?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { pendingClose = null },
+            containerColor = colors.bgElevated,
+            title = { Text(stringResource(R.string.sessions_close_folder_confirm, folder.name), color = colors.textPrimary) },
+            text = { Text(stringResource(R.string.sessions_close_folder_message), color = colors.textSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingClose = null
+                        viewModel.closeFolder(folder)
+                    },
+                ) { Text(stringResource(R.string.common_remove), color = colors.danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingClose = null }) {
+                    Text(stringResource(R.string.common_cancel), color = colors.textSecondary)
+                }
+            },
+        )
+    }
     if (showClone) {
         CloneRepoSheet(
             loadHome = viewModel::homeDirectory,
@@ -175,12 +207,23 @@ fun ProjectListScreen(
  * relative last-opened time, then a drill-in chevron. The enclosing [GlassCard]
  * draws the surface; rows are split by inset hairlines.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun FolderRow(folder: FolderDetail, running: Int, modifier: Modifier = Modifier, onClick: () -> Unit) {
+private fun FolderRow(
+    folder: FolderDetail,
+    running: Int,
+    onClick: () -> Unit,
+    onClose: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val colors = CodegTheme.colors
     val tile = colorFromHex(folder.color) ?: colors.accent
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
     Row(
-        modifier.fillMaxWidth().clickable { onClick() }.padding(horizontal = 14.dp, vertical = 12.dp),
+        modifier.fillMaxWidth()
+            .combinedClickable(onClick = onClick, onLongClick = { menuOpen = true })
+            .padding(horizontal = 14.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -198,6 +241,17 @@ private fun FolderRow(folder: FolderDetail, running: Int, modifier: Modifier = M
             folder.lastOpenedAt?.let { Text(RelativeTime.compact(it), fontSize = 11.sp, color = colors.textTertiary) }
         }
         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = colors.textTertiary, modifier = Modifier.size(18.dp))
+    }
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.sessions_close_folder), color = colors.danger) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = colors.danger) },
+                onClick = {
+                    menuOpen = false
+                    onClose()
+                },
+            )
+        }
     }
 }
 

@@ -16,12 +16,14 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -49,7 +51,7 @@ import androidx.compose.ui.res.stringResource
  * borderless line. The agent's brand avatar (with a status-tinted dot) anchors
  * the left, the title fills the middle, and the trailing edge shows a live pulse
  * while running or a compact relative time otherwise. Long-press opens a Pin/
- * Unpin menu (the Compose analogue of the iOS row context menu).
+ * Unpin / Delete menu (the Compose analogue of the iOS row context menu).
  *
  * Faithful port of the iOS `SessionRow`.
  */
@@ -62,6 +64,7 @@ fun SessionRow(
     folderName: String? = null,
     selected: Boolean = false,
     onTogglePin: (() -> Unit)? = null,
+    onDelete: (() -> Unit)? = null,
     depth: Int = 0,
     childCount: Int = 0,
     childrenExpanded: Boolean = false,
@@ -69,6 +72,7 @@ fun SessionRow(
 ) {
     val colors = CodegTheme.colors
     var menuOpen by remember { mutableStateOf(false) }
+    val hasMenu = onTogglePin != null || onDelete != null
 
     Box {
         Row(
@@ -81,13 +85,13 @@ fun SessionRow(
                 )
                 .combinedClickable(
                     onClick = onClick,
-                    onLongClick = if (onTogglePin != null) {
+                    onLongClick = if (hasMenu) {
                         { menuOpen = true }
                     } else {
                         null
                     },
                 )
-                .padding(horizontal = 8.dp, vertical = 8.dp),
+                .padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
@@ -171,24 +175,43 @@ fun SessionRow(
             }
         }
 
-        if (onTogglePin != null) {
+        if (hasMenu) {
             DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            if (conversation.isPinned) {
-                                stringResource(R.string.session_unpin)
-                            } else {
-                                stringResource(R.string.session_pin)
-                            },
-                        )
-                    },
-                    leadingIcon = { Icon(Icons.Rounded.PushPin, contentDescription = null) },
-                    onClick = {
-                        menuOpen = false
-                        onTogglePin()
-                    },
-                )
+                if (onTogglePin != null) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                if (conversation.isPinned) {
+                                    stringResource(R.string.session_unpin)
+                                } else {
+                                    stringResource(R.string.session_pin)
+                                },
+                            )
+                        },
+                        leadingIcon = { Icon(Icons.Rounded.PushPin, contentDescription = null) },
+                        onClick = {
+                            menuOpen = false
+                            onTogglePin()
+                        },
+                    )
+                }
+                if (onTogglePin != null && onDelete != null) {
+                    HorizontalDivider()
+                }
+                if (onDelete != null) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(stringResource(R.string.common_delete), color = colors.danger)
+                        },
+                        leadingIcon = {
+                            Icon(Icons.Rounded.Delete, contentDescription = null, tint = colors.danger)
+                        },
+                        onClick = {
+                            menuOpen = false
+                            onDelete()
+                        },
+                    )
+                }
             }
         }
     }

@@ -8,6 +8,7 @@ import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
 import app.codeg.android.core.network.CodegClient
 import app.codeg.android.core.network.displayMessage
+import app.codeg.android.feature.sessions.SessionListMutations
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
@@ -87,6 +88,30 @@ class ProjectsViewModel @Inject constructor(
             val err = runCatching { c.openFolder(path) }.exceptionOrNull()?.displayMessage()
             if (err == null) fetch(initial = false)
             onResult(err)
+        }
+    }
+
+    /** Unregister a folder from the sidebar. Files on disk are not deleted. */
+    fun closeFolder(folder: FolderDetail) {
+        val c = client ?: return
+        val previousFolders = _ui.value.folders
+        val previousConversations = _ui.value.conversations
+        val next = SessionListMutations.withoutFolder(previousFolders, previousConversations, folder.id)
+        _ui.update { it.copy(folders = next.folders, conversations = next.conversations) }
+        viewModelScope.launch {
+            try {
+                c.closeFolder(folder.id)
+                repository.notifyFoldersChanged()
+                repository.notifyConversationsChanged()
+            } catch (e: Exception) {
+                _ui.update {
+                    it.copy(
+                        folders = previousFolders,
+                        conversations = previousConversations,
+                        error = e.displayMessage(),
+                    )
+                }
+            }
         }
     }
 

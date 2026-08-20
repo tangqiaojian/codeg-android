@@ -347,6 +347,10 @@ data class QuickMessageUpdateBody(val id: Int, val title: String, val content: S
 @Serializable
 data class IdBody(val id: Int)
 
+/** Body for `close_folder` — unregisters a workspace without deleting files. */
+@Serializable
+data class FolderIdBody(val folderId: Int)
+
 @Serializable
 data class QuickMessageReorderBody(val ids: List<Int>)
 

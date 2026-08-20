@@ -91,6 +91,9 @@
     <string name="sessions_section_chats">聊天</string>
     <string name="sessions_section_recent">最近</string>
     <string name="sessions_open_folder">打开文件夹</string>
+    <string name="sessions_close_folder">移除文件夹</string>
+    <string name="sessions_close_folder_confirm">移除“%1$s”？</string>
+    <string name="sessions_close_folder_message">会从列表中移除该文件夹，不会删除磁盘上的文件。</string>
     <string name="session_find">在会话中查找</string>
     <string name="session_find_placeholder">查找消息</string>
     <string name="session_find_previous">上一个匹配</string>
@@ -330,6 +333,7 @@
     <string name="common_cancel">取消</string>
     <string name="common_save">保存</string>
     <string name="common_delete">删除</string>
+    <string name="common_more">更多</string>
     <string name="common_edit">编辑</string>
     <string name="common_remove">移除</string>
     <string name="common_add">添加</string>

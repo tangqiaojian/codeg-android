@@ -91,6 +91,9 @@
     <string name="sessions_section_chats">Chats</string>
     <string name="sessions_section_recent">Recent</string>
     <string name="sessions_open_folder">Open folder</string>
+    <string name="sessions_close_folder">Remove Folder</string>
+    <string name="sessions_close_folder_confirm">Remove “%1$s”?</string>
+    <string name="sessions_close_folder_message">Removes this folder from the list. Files on disk are not deleted.</string>
     <string name="session_find">Find in session</string>
     <string name="session_find_placeholder">Find in messages</string>
     <string name="session_find_previous">Previous match</string>
@@ -330,6 +333,7 @@
     <string name="common_cancel">Cancel</string>
     <string name="common_save">Save</string>
     <string name="common_delete">Delete</string>
+    <string name="common_more">More</string>
     <string name="common_edit">Edit</string>
     <string name="common_remove">Remove</string>
     <string name="common_add">Add</string>

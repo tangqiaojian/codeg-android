@@ -41,6 +41,7 @@ import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.feature.sessions.CollapsibleSectionHeader
 import app.codeg.android.feature.sessions.SessionRow
+import app.codeg.android.feature.sessions.sessionRowKey
 import java.time.Instant
 
 /**
@@ -111,7 +112,7 @@ fun ActivityScreen(
                                 )
                             }
                             if (!isCollapsed) {
-                                items(section.rows, key = { "row-${it.conversation.id}" }, contentType = { "row" }) { row ->
+                                items(section.rows, key = { sessionRowKey(section.id, folderId = null, it.conversation.id) }, contentType = { "row" }) { row ->
                                     SessionRow(
                                         row.conversation,
                                         onClick = { onOpenConversation(row.conversation.id) },

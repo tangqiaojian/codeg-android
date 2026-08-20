@@ -8,6 +8,7 @@ import app.codeg.android.core.model.ConversationStatus
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.ConversationTurnsPage
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.FolderIdBody
 import app.codeg.android.core.model.GetFolderConversationBody
 import app.codeg.android.core.model.GetFolderConversationTurnsBody
 import app.codeg.android.core.model.ListConversationsBody
@@ -116,6 +117,13 @@ class CodegJsonTest {
     @Test
     fun `bare JSON integer decodes (create_conversation)`() {
         assertEquals(42, CodegJson.response.decodeFromString(Int.serializer(), "42"))
+    }
+
+    @Test
+    fun `close folder request encodes folderId`() {
+        val json = CodegJson.request.encodeToString(FolderIdBody(folderId = 7))
+        assertTrue(json.contains("\"folderId\":7"))
+        assertFalse(json.contains("\"id\""))
     }
 
     @Test

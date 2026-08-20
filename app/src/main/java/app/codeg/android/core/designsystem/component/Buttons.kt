@@ -1,5 +1,9 @@
 package app.codeg.android.core.designsystem.component
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -11,16 +15,16 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import app.codeg.android.core.designsystem.theme.CodegTheme
 
 /**
@@ -69,10 +73,8 @@ fun PrimaryButton(
 }
 
 /**
- * A Material 3 single-choice segmented control, themed to the accent. Replaces
- * the hand-rolled iOS-style segmented toggles used for tab/source/theme pickers.
+ * iOS `UISegmentedControl`: grey track, white selected pill, 13pt labels.
  */
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun CodegSegmented(
     options: List<String>,
@@ -81,23 +83,33 @@ fun CodegSegmented(
     modifier: Modifier = Modifier,
 ) {
     val colors = CodegTheme.colors
-    SingleChoiceSegmentedButtonRow(modifier = modifier.fillMaxWidth()) {
+    val track = if (colors.isDark) Color.White.copy(alpha = 0.12f) else Color(0xFF767680).copy(alpha = 0.16f)
+    val selectedFill = if (colors.isDark) Color.White.copy(alpha = 0.22f) else Color.White
+    Row(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(9.dp))
+            .background(track)
+            .padding(2.dp),
+    ) {
         options.forEachIndexed { index, label ->
-            SegmentedButton(
-                selected = index == selectedIndex,
-                onClick = { onSelect(index) },
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                colors = SegmentedButtonDefaults.colors(
-                    activeContainerColor = colors.accent.copy(alpha = 0.18f),
-                    activeContentColor = colors.accent,
-                    activeBorderColor = colors.accent.copy(alpha = 0.5f),
-                    inactiveContainerColor = Color.Transparent,
-                    inactiveContentColor = colors.textSecondary,
-                    inactiveBorderColor = colors.surfaceStroke,
-                ),
-                icon = {},
+            val selected = index == selectedIndex
+            Box(
+                Modifier
+                    .weight(1f)
+                    .clip(RoundedCornerShape(7.dp))
+                    .background(if (selected) selectedFill else Color.Transparent)
+                    .clickable { onSelect(index) }
+                    .padding(vertical = 7.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                Text(label, maxLines = 1)
+                Text(
+                    label,
+                    fontSize = 13.sp,
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                    color = if (selected) colors.textPrimary else colors.textSecondary,
+                    maxLines = 1,
+                )
             }
         }
     }

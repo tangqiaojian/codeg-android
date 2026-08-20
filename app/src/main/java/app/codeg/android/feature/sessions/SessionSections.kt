@@ -240,3 +240,68 @@ private fun attachChildren(
         children = children,
     )
 }
+
+/** LazyColumn key for a conversation row, scoped so Chats/Recent/folder copies never collide. */
+fun sessionRowKey(sectionId: String, folderId: Int?, conversationId: Int): String =
+    "row-$sectionId-${folderId ?: "root"}-$conversationId"
+
+fun sessionFolderKey(folderId: Int): String = "folder-$folderId"
+
+fun sessionHeaderKey(sectionId: String): String = "h-$sectionId"
+
+/**
+ * Every LazyColumn key the session list will emit for this fold/expand state.
+ * Used to lock uniqueness: Compose crashes if Chats and Recent reuse `row-{id}`.
+ */
+fun sessionListKeys(
+    sections: List<SessionSection>,
+    collapsed: Set<String> = emptySet(),
+    collapsedChildren: Set<Int> = emptySet(),
+    expandedFolders: Set<Int> = emptySet(),
+    includeRefreshError: Boolean = false,
+): List<String> {
+    val keys = ArrayList<String>()
+    if (includeRefreshError) keys += "refresh-error"
+    for (section in sections) {
+        keys += sessionHeaderKey(section.id)
+        if (section.id in collapsed) continue
+        if (section.folders.isNotEmpty()) {
+            appendFolderKeys(keys, section.id, section.folders, collapsedChildren, expandedFolders)
+        } else {
+            appendRowKeys(keys, section.id, folderId = null, section.rows, collapsedChildren)
+        }
+    }
+    return keys
+}
+
+private fun appendFolderKeys(
+    keys: MutableList<String>,
+    sectionId: String,
+    folders: List<FolderEntry>,
+    collapsedChildren: Set<Int>,
+    expandedFolders: Set<Int>,
+) {
+    for (entry in folders) {
+        keys += sessionFolderKey(entry.folder.id)
+        if (entry.folder.id in expandedFolders) {
+            appendRowKeys(keys, sectionId, entry.folder.id, entry.conversations, collapsedChildren)
+        }
+        appendFolderKeys(keys, sectionId, entry.children, collapsedChildren, expandedFolders)
+    }
+}
+
+private fun appendRowKeys(
+    keys: MutableList<String>,
+    sectionId: String,
+    folderId: Int?,
+    rows: List<SessionRowItem>,
+    collapsedChildren: Set<Int>,
+) {
+    for (row in rows) {
+        keys += sessionRowKey(sectionId, folderId, row.conversation.id)
+        val expanded = row.children.isNotEmpty() && row.conversation.id !in collapsedChildren
+        if (expanded) {
+            appendRowKeys(keys, sectionId, folderId, row.children, collapsedChildren)
+        }
+    }
+}

@@ -186,6 +186,54 @@ class SessionListViewModel @Inject constructor(
         }
     }
 
+    /** Permanently delete a conversation (server `delete_conversation`). */
+    fun deleteConversation(conversation: ConversationSummary) {
+        val active = client ?: return
+        val previousFolders = _ui.value.folders
+        val previousConversations = _ui.value.conversations
+        _ui.update {
+            it.copy(conversations = SessionListMutations.withoutConversation(it.conversations, conversation.id))
+        }
+        viewModelScope.launch {
+            try {
+                active.deleteConversation(conversation.id)
+                repository.notifyConversationsChanged()
+            } catch (e: Exception) {
+                _ui.update {
+                    it.copy(
+                        folders = previousFolders,
+                        conversations = previousConversations,
+                        error = e.displayMessage(),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Unregister a folder from the sidebar (server `close_folder`). Files stay on disk. */
+    fun closeFolder(folder: FolderDetail) {
+        val active = client ?: return
+        val previousFolders = _ui.value.folders
+        val previousConversations = _ui.value.conversations
+        val next = SessionListMutations.withoutFolder(previousFolders, previousConversations, folder.id)
+        _ui.update { it.copy(folders = next.folders, conversations = next.conversations) }
+        viewModelScope.launch {
+            try {
+                active.closeFolder(folder.id)
+                repository.notifyFoldersChanged()
+                repository.notifyConversationsChanged()
+            } catch (e: Exception) {
+                _ui.update {
+                    it.copy(
+                        folders = previousFolders,
+                        conversations = previousConversations,
+                        error = e.displayMessage(),
+                    )
+                }
+            }
+        }
+    }
+
     fun dismissError() = _ui.update { it.copy(error = null) }
 
     fun onSearchChange(value: String) = _ui.update { it.copy(search = value) }

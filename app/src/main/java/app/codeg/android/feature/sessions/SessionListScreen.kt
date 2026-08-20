@@ -1,8 +1,10 @@
 package app.codeg.android.feature.sessions
 
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,13 +17,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.Analytics
+import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Schedule
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Dns
@@ -30,17 +33,17 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material.icons.rounded.Folder
 import androidx.compose.material.icons.rounded.FolderOpen
-import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Inbox
+import androidx.compose.material.icons.rounded.MoreHoriz
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Terminal
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,6 +76,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import app.codeg.android.R
 import app.codeg.android.core.datastore.ServerProfile
+import app.codeg.android.core.designsystem.component.CodegSegmented
 import app.codeg.android.core.designsystem.component.EmptyState
 import app.codeg.android.core.designsystem.component.InlineError
 import app.codeg.android.core.designsystem.component.LoadingView
@@ -81,7 +85,7 @@ import app.codeg.android.core.designsystem.theme.colorFromHex
 import app.codeg.android.core.designsystem.component.FolderBadge
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
-import app.codeg.android.feature.main.LocalBarsVisible
+
 
 /**
  * The Chats tab: the grouped session list for the selected server (Pinned /
@@ -118,6 +122,9 @@ fun SessionListScreen(
     var collapsed by rememberSaveable { mutableStateOf(emptySet<String>()) }
     var collapsedChildren by rememberSaveable { mutableStateOf(emptySet<Int>()) }
     var expandedFolders by rememberSaveable { mutableStateOf(emptySet<Int>()) }
+    var pendingDelete by remember { mutableStateOf<ConversationSummary?>(null) }
+    var pendingCloseFolder by remember { mutableStateOf<FolderDetail?>(null) }
+    var overflowOpen by remember { mutableStateOf(false) }
     val colors = CodegTheme.colors
     val selectedName = servers.firstOrNull { it.id == selectedId }?.name
         ?: stringResource(R.string.app_name)
@@ -137,46 +144,55 @@ fun SessionListScreen(
                     )
                 },
                 actions = {
-                    IconButton(onClick = onOpenTodos) {
+                    IconButton(onClick = onNewTask) {
                         Icon(
-                            Icons.Rounded.CheckCircle,
-                            contentDescription = stringResource(R.string.todos_title),
-                            tint = colors.textSecondary,
+                            Icons.Rounded.Add,
+                            contentDescription = stringResource(R.string.session_new_task),
+                            tint = colors.accent,
                         )
                     }
-                    IconButton(onClick = onOpenAutomations) {
-                        Icon(Icons.Rounded.Schedule, contentDescription = stringResource(R.string.automations_title), tint = colors.textSecondary)
-                    }
-                    IconButton(onClick = onOpenTokenUsage) {
-                        Icon(Icons.Rounded.Analytics, contentDescription = stringResource(R.string.token_usage_title), tint = colors.textSecondary)
-                    }
-                    IconButton(onClick = onOpenTerminal) {
-                        Icon(Icons.Rounded.Terminal, contentDescription = stringResource(R.string.terminal_title), tint = colors.textSecondary)
-                    }
-                    IconButton(onClick = onManageServers) {
-                        Icon(
-                            Icons.Rounded.Dns,
-                            contentDescription = stringResource(R.string.home_manage_servers),
-                            tint = colors.textSecondary,
-                        )
+                    Box {
+                        IconButton(onClick = { overflowOpen = true }) {
+                            Icon(
+                                Icons.Rounded.MoreHoriz,
+                                contentDescription = stringResource(R.string.common_more),
+                                tint = colors.accent,
+                            )
+                        }
+                        DropdownMenu(expanded = overflowOpen, onDismissRequest = { overflowOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.todos_title)) },
+                                leadingIcon = { Icon(Icons.Rounded.CheckCircle, contentDescription = null) },
+                                onClick = { overflowOpen = false; onOpenTodos() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.automations_title)) },
+                                leadingIcon = { Icon(Icons.Rounded.Schedule, contentDescription = null) },
+                                onClick = { overflowOpen = false; onOpenAutomations() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.token_usage_title)) },
+                                leadingIcon = { Icon(Icons.Rounded.Analytics, contentDescription = null) },
+                                onClick = { overflowOpen = false; onOpenTokenUsage() },
+                            )
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.terminal_title)) },
+                                leadingIcon = { Icon(Icons.Rounded.Terminal, contentDescription = null) },
+                                onClick = { overflowOpen = false; onOpenTerminal() },
+                            )
+                            HorizontalDivider()
+                            DropdownMenuItem(
+                                text = { Text(stringResource(R.string.home_manage_servers)) },
+                                leadingIcon = { Icon(Icons.Rounded.Dns, contentDescription = null) },
+                                onClick = { overflowOpen = false; onManageServers() },
+                            )
+                        }
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = Color.Transparent,
                     titleContentColor = colors.textPrimary,
                 ),
-            )
-        },
-        floatingActionButton = {
-            ExtendedFloatingActionButton(
-                onClick = onNewTask,
-                // Follows the bottom bar: collapses to just "+" while scrolling up,
-                // expands back to the full pill when scrolling down (driven by MainShell).
-                expanded = LocalBarsVisible.current,
-                icon = { Icon(Icons.Rounded.Add, contentDescription = null) },
-                text = { Text(stringResource(R.string.session_new_task)) },
-                containerColor = colors.accent,
-                contentColor = colors.onAccent,
             )
         },
     ) { padding ->
@@ -191,7 +207,7 @@ fun SessionListScreen(
                 !ui.hasLoaded && ui.error != null -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         InlineError(
-                            icon = Icons.Rounded.Forum,
+                            icon = Icons.Outlined.ChatBubbleOutline,
                             title = stringResource(R.string.sessions_load_failed),
                             message = ui.error!!,
                             onRetry = viewModel::refresh,
@@ -203,7 +219,7 @@ fun SessionListScreen(
                 ui.hasLoaded && ui.isEmpty -> {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(
-                            icon = Icons.Rounded.Forum,
+                            icon = Icons.Outlined.ChatBubbleOutline,
                             title = stringResource(R.string.sessions_empty_title),
                             message = stringResource(R.string.sessions_empty_message),
                             actionLabel = stringResource(R.string.session_new_task),
@@ -214,20 +230,20 @@ fun SessionListScreen(
 
                 else -> {
                     Column(Modifier.fillMaxSize()) {
-                        Row(
-                            Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            SessionScopeFilter(
-                                scope = ui.scope,
-                                onChange = viewModel::onScopeChange,
-                            )
-                            SessionListSearchField(
-                                value = ui.search,
-                                onValueChange = viewModel::onSearchChange,
-                                modifier = Modifier.weight(1f),
-                            )
-                        }
+                        SessionScopeFilter(
+                            scope = ui.scope,
+                            onChange = viewModel::onScopeChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                        SessionListSearchField(
+                            value = ui.search,
+                            onValueChange = viewModel::onSearchChange,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
                         if (sectionsReady && sections.isEmpty() && ui.search.isNotBlank()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 EmptyState(
@@ -239,7 +255,7 @@ fun SessionListScreen(
                         } else if (sectionsReady && sections.isEmpty()) {
                             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                 EmptyState(
-                                    icon = if (ui.scope == SessionListScope.CHATS) Icons.Rounded.Forum else Icons.Rounded.Folder,
+                                    icon = if (ui.scope == SessionListScope.CHATS) Icons.Outlined.ChatBubbleOutline else Icons.Rounded.Folder,
                                     title = stringResource(
                                         when (ui.scope) {
                                             SessionListScope.CHATS -> R.string.sessions_filter_chats_empty
@@ -273,6 +289,8 @@ fun SessionListScreen(
                                     onOpenConversation = onOpenConversation,
                                     onOpenFolder = onOpenFolder,
                                     onTogglePin = { conv -> viewModel.setPinned(conv, !conv.isPinned) },
+                                    onDeleteConversation = { pendingDelete = it },
+                                    onCloseFolder = { pendingCloseFolder = it },
                                     refreshError = ui.error,
                                     onRetry = viewModel::refresh,
                                     onDismissError = viewModel::dismissError,
@@ -284,56 +302,68 @@ fun SessionListScreen(
             }
         }
     }
+
+    pendingDelete?.let { conversation ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            containerColor = colors.bgElevated,
+            title = { Text(stringResource(R.string.sessionactions_delete_session_confirm), color = colors.textPrimary) },
+            text = { Text(stringResource(R.string.sessionactions_delete_session_message), color = colors.textSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDelete = null
+                        viewModel.deleteConversation(conversation)
+                    },
+                ) { Text(stringResource(R.string.common_delete), color = colors.danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) {
+                    Text(stringResource(R.string.common_cancel), color = colors.textSecondary)
+                }
+            },
+        )
+    }
+    pendingCloseFolder?.let { folder ->
+        AlertDialog(
+            onDismissRequest = { pendingCloseFolder = null },
+            containerColor = colors.bgElevated,
+            title = { Text(stringResource(R.string.sessions_close_folder_confirm, folder.name), color = colors.textPrimary) },
+            text = { Text(stringResource(R.string.sessions_close_folder_message), color = colors.textSecondary) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingCloseFolder = null
+                        viewModel.closeFolder(folder)
+                    },
+                ) { Text(stringResource(R.string.common_remove), color = colors.danger) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingCloseFolder = null }) {
+                    Text(stringResource(R.string.common_cancel), color = colors.textSecondary)
+                }
+            },
+        )
+    }
 }
 
 @Composable
-private fun SessionScopeFilter(scope: SessionListScope, onChange: (SessionListScope) -> Unit) {
-    val colors = CodegTheme.colors
-    var expanded by remember { mutableStateOf(false) }
-    val label = stringResource(
-        when (scope) {
-            SessionListScope.ALL -> R.string.sessions_filter_all
-            SessionListScope.WORKSPACES -> R.string.sessions_filter_folders
-            SessionListScope.CHATS -> R.string.sessions_filter_chats
-        },
+private fun SessionScopeFilter(
+    scope: SessionListScope,
+    onChange: (SessionListScope) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val labels = listOf(
+        stringResource(R.string.sessions_filter_all),
+        stringResource(R.string.sessions_filter_folders),
+        stringResource(R.string.sessions_filter_chats),
     )
-    Box {
-        TextButton(
-            onClick = { expanded = true },
-            colors = ButtonDefaults.textButtonColors(contentColor = colors.textPrimary),
-            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-        ) {
-            Text(label, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Icon(Icons.Rounded.ExpandMore, contentDescription = stringResource(R.string.sessions_filter), modifier = Modifier.size(18.dp))
-        }
-        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-            SessionListScope.entries.forEach { option ->
-                DropdownMenuItem(
-                    text = {
-                        Text(
-                            stringResource(
-                                when (option) {
-                                    SessionListScope.ALL -> R.string.sessions_filter_all
-                                    SessionListScope.WORKSPACES -> R.string.sessions_filter_folders
-                                    SessionListScope.CHATS -> R.string.sessions_filter_chats
-                                },
-                            ),
-                            color = colors.textPrimary,
-                        )
-                    },
-                    leadingIcon = {
-                        if (option == scope) {
-                            Icon(Icons.Rounded.Check, contentDescription = null, tint = colors.accent, modifier = Modifier.size(18.dp))
-                        }
-                    },
-                    onClick = {
-                        onChange(option)
-                        expanded = false
-                    },
-                )
-            }
-        }
-    }
+    CodegSegmented(
+        options = labels,
+        selectedIndex = SessionListScope.entries.indexOf(scope).coerceAtLeast(0),
+        onSelect = { onChange(SessionListScope.entries[it]) },
+        modifier = modifier,
+    )
 }
 
 @Composable
@@ -353,7 +383,7 @@ private fun SessionListSearchField(value: String, onValueChange: (String) -> Uni
             }
         },
         singleLine = true,
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(10.dp),
         colors = TextFieldDefaults.colors(
             focusedContainerColor = colors.codeSurface,
             unfocusedContainerColor = colors.codeSurface,
@@ -385,6 +415,8 @@ private fun SessionList(
     onOpenConversation: (Int) -> Unit,
     onOpenFolder: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
+    onDeleteConversation: (ConversationSummary) -> Unit,
+    onCloseFolder: (FolderDetail) -> Unit,
     refreshError: String?,
     onRetry: () -> Unit,
     onDismissError: () -> Unit,
@@ -392,10 +424,10 @@ private fun SessionList(
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         contentPadding = PaddingValues(
-            start = 8.dp,
-            end = 8.dp,
-            top = 8.dp,
-            bottom = 88.dp, // clear the extended FAB
+            start = 12.dp,
+            end = 12.dp,
+            top = 4.dp,
+            bottom = 24.dp,
         ),
     ) {
         if (refreshError != null) {
@@ -421,6 +453,8 @@ private fun SessionList(
                 onOpenConversation = onOpenConversation,
                 onOpenFolder = onOpenFolder,
                 onTogglePin = onTogglePin,
+                onDeleteConversation = onDeleteConversation,
+                onCloseFolder = onCloseFolder,
             )
         }
     }
@@ -437,9 +471,11 @@ private fun LazyListScope.sessionSectionItems(
     onOpenConversation: (Int) -> Unit,
     onOpenFolder: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
+    onDeleteConversation: (ConversationSummary) -> Unit,
+    onCloseFolder: (FolderDetail) -> Unit,
 ) {
     val isCollapsed = section.id in collapsed
-    item(key = "h-${section.id}", contentType = "header") {
+    item(key = sessionHeaderKey(section.id), contentType = "header") {
         val style = sectionStyle(section.kind)
         CollapsibleSectionHeader(
             icon = style.icon,
@@ -457,6 +493,7 @@ private fun LazyListScope.sessionSectionItems(
         section.folders.forEach { entry ->
             folderEntryItems(
                 entry = entry,
+                section = section,
                 collapsedChildren = collapsedChildren,
                 expandedFolders = expandedFolders,
                 onToggleChildren = onToggleChildren,
@@ -464,16 +501,21 @@ private fun LazyListScope.sessionSectionItems(
                 onOpenConversation = onOpenConversation,
                 onOpenFolder = onOpenFolder,
                 onTogglePin = onTogglePin,
+                onDeleteConversation = onDeleteConversation,
+                onCloseFolder = onCloseFolder,
             )
         }
     } else {
         section.rows.forEach { row ->
             sessionRowItems(
                 row = row,
+                sectionId = section.id,
+                folderId = null,
                 collapsedChildren = collapsedChildren,
                 onToggleChildren = onToggleChildren,
                 onOpenConversation = onOpenConversation,
                 onTogglePin = onTogglePin,
+                onDeleteConversation = onDeleteConversation,
             )
         }
     }
@@ -481,6 +523,7 @@ private fun LazyListScope.sessionSectionItems(
 
 private fun LazyListScope.folderEntryItems(
     entry: FolderEntry,
+    section: SessionSection,
     collapsedChildren: Set<Int>,
     expandedFolders: Set<Int>,
     onToggleChildren: (Int) -> Unit,
@@ -488,9 +531,11 @@ private fun LazyListScope.folderEntryItems(
     onOpenConversation: (Int) -> Unit,
     onOpenFolder: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
+    onDeleteConversation: (ConversationSummary) -> Unit,
+    onCloseFolder: (FolderDetail) -> Unit,
 ) {
     val expanded = entry.folder.id in expandedFolders
-    item(key = "folder-${entry.folder.id}", contentType = "folder") {
+    item(key = sessionFolderKey(entry.folder.id), contentType = "folder") {
         SessionListFolderRow(
             folder = entry.folder,
             depth = entry.depth,
@@ -502,6 +547,7 @@ private fun LazyListScope.folderEntryItems(
                 else onOpenFolder(entry.folder.id)
             },
             onOpenFolder = { onOpenFolder(entry.folder.id) },
+            onCloseFolder = { onCloseFolder(entry.folder) },
             modifier = Modifier.animateItem(),
         )
     }
@@ -509,10 +555,13 @@ private fun LazyListScope.folderEntryItems(
         entry.conversations.forEach { row ->
             sessionRowItems(
                 row = row,
+                sectionId = section.id,
+                folderId = entry.folder.id,
                 collapsedChildren = collapsedChildren,
                 onToggleChildren = onToggleChildren,
                 onOpenConversation = onOpenConversation,
                 onTogglePin = onTogglePin,
+                onDeleteConversation = onDeleteConversation,
             )
         }
     }
@@ -520,6 +569,7 @@ private fun LazyListScope.folderEntryItems(
     entry.children.forEach { child ->
         folderEntryItems(
             entry = child,
+            section = section,
             collapsedChildren = collapsedChildren,
             expandedFolders = expandedFolders,
             onToggleChildren = onToggleChildren,
@@ -527,10 +577,13 @@ private fun LazyListScope.folderEntryItems(
             onOpenConversation = onOpenConversation,
             onOpenFolder = onOpenFolder,
             onTogglePin = onTogglePin,
+            onDeleteConversation = onDeleteConversation,
+            onCloseFolder = onCloseFolder,
         )
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SessionListFolderRow(
     folder: FolderDetail,
@@ -540,73 +593,103 @@ private fun SessionListFolderRow(
     expanded: Boolean,
     onToggle: () -> Unit,
     onOpenFolder: () -> Unit,
+    onCloseFolder: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val colors = CodegTheme.colors
     val tile = colorFromHex(folder.color) ?: colors.accent
-    Row(
-        modifier
-            .fillMaxWidth()
-            .padding(start = (depth * 16).dp)
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onToggle)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        FolderBadge(color = tile, size = 32.dp)
-        Column(Modifier.weight(1f)) {
-            Text(
-                folder.name,
-                style = MaterialTheme.typography.bodyLarge,
-                color = colors.textPrimary,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            val subtitle = buildList {
-                breadcrumb?.takeIf { it.isNotBlank() && it != folder.name }?.let { add(it) }
-                folder.gitBranch?.takeIf { it.isNotBlank() }?.let { add(it) }
-            }.joinToString(" · ")
-            if (subtitle.isNotBlank()) {
-                Text(subtitle, fontSize = 11.sp, color = colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    var menuOpen by remember { mutableStateOf(false) }
+    Box {
+        Row(
+            modifier
+                .fillMaxWidth()
+                .padding(start = (depth * 16).dp)
+                .clip(RoundedCornerShape(14.dp))
+                .combinedClickable(
+                    onClick = onToggle,
+                    onLongClick = { menuOpen = true },
+                )
+                .padding(horizontal = 8.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            FolderBadge(color = tile, size = 32.dp)
+            Column(Modifier.weight(1f)) {
+                Text(
+                    folder.name,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = colors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                val subtitle = buildList {
+                    breadcrumb?.takeIf { it.isNotBlank() && it != folder.name }?.let { add(it) }
+                    folder.gitBranch?.takeIf { it.isNotBlank() }?.let { add(it) }
+                }.joinToString(" · ")
+                if (subtitle.isNotBlank()) {
+                    Text(subtitle, fontSize = 11.sp, color = colors.textTertiary, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
             }
-        }
-        if (sessionCount > 0) {
+            if (sessionCount > 0) {
+                Icon(
+                    if (expanded) Icons.Rounded.ExpandMore else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = stringResource(if (expanded) R.string.sessions_collapse else R.string.sessions_expand),
+                    tint = colors.textTertiary,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
             Icon(
-                if (expanded) Icons.Rounded.ExpandMore else Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                contentDescription = stringResource(if (expanded) R.string.sessions_collapse else R.string.sessions_expand),
-                tint = colors.textTertiary,
-                modifier = Modifier.size(18.dp),
+                Icons.Rounded.FolderOpen,
+                contentDescription = stringResource(R.string.sessions_open_folder),
+                tint = colors.textSecondary,
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable(onClick = onOpenFolder)
+                    .padding(6.dp),
             )
         }
-        Icon(
-            Icons.Rounded.FolderOpen,
-            contentDescription = stringResource(R.string.sessions_open_folder),
-            tint = colors.textSecondary,
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpenFolder)
-                .padding(6.dp),
-        )
+        DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.sessions_open_folder)) },
+                leadingIcon = { Icon(Icons.Rounded.FolderOpen, contentDescription = null) },
+                onClick = {
+                    menuOpen = false
+                    onOpenFolder()
+                },
+            )
+            HorizontalDivider()
+            DropdownMenuItem(
+                text = { Text(stringResource(R.string.sessions_close_folder), color = colors.danger) },
+                leadingIcon = { Icon(Icons.Rounded.Delete, contentDescription = null, tint = colors.danger) },
+                onClick = {
+                    menuOpen = false
+                    onCloseFolder()
+                },
+            )
+        }
     }
 }
 
 private fun LazyListScope.sessionRowItems(
     row: SessionRowItem,
+    sectionId: String,
+    folderId: Int?,
     collapsedChildren: Set<Int>,
     onToggleChildren: (Int) -> Unit,
     onOpenConversation: (Int) -> Unit,
     onTogglePin: (ConversationSummary) -> Unit,
+    onDeleteConversation: (ConversationSummary) -> Unit,
 ) {
     val expanded = row.children.isNotEmpty() && row.conversation.id !in collapsedChildren
-    item(key = "row-${row.conversation.id}", contentType = "row") {
+    item(key = sessionRowKey(sectionId, folderId, row.conversation.id), contentType = "row") {
         SessionRow(
             conversation = row.conversation,
             onClick = { onOpenConversation(row.conversation.id) },
             modifier = Modifier.animateItem(),
             folderName = row.folderName,
             onTogglePin = { onTogglePin(row.conversation) },
+            onDelete = { onDeleteConversation(row.conversation) },
             depth = row.depth,
             childCount = row.children.size,
             childrenExpanded = expanded,
@@ -621,10 +704,13 @@ private fun LazyListScope.sessionRowItems(
         row.children.forEach { child ->
             sessionRowItems(
                 row = child,
+                sectionId = sectionId,
+                folderId = folderId,
                 collapsedChildren = collapsedChildren,
                 onToggleChildren = onToggleChildren,
                 onOpenConversation = onOpenConversation,
                 onTogglePin = onTogglePin,
+                onDeleteConversation = onDeleteConversation,
             )
         }
     }
@@ -653,7 +739,7 @@ private fun sectionStyle(kind: SectionKind): SectionStyle {
             label = stringResource(R.string.sessions_section_folders),
         )
         SectionKind.Chats -> SectionStyle(
-            icon = Icons.Rounded.Forum,
+            icon = Icons.Outlined.ChatBubbleOutline,
             tint = colors.accent,
             label = stringResource(R.string.sessions_section_chats),
         )
