@@ -51,6 +51,22 @@ class AppUpdateManagerTest {
     }
 
     @Test
+    fun `download uses a reachable mirror when origin cannot be probed`() = runTest(dispatcher) {
+        val origin = "https://github.com/tangqiaojian/codeg-android/releases/download/v1.2.4/app.apk"
+        val mirror = "https://ghproxy.net/$origin"
+        val apk = "apk-bytes".toByteArray()
+        val remote = FakeRemote(
+            json = releaseJson(apkUrl = origin),
+            files = mapOf(mirror to apk),
+        )
+        val mgr = manager(remote)
+        mgr.check(force = true)
+        mgr.download()
+        val ready = mgr.ui.value as AppUpdateUi.ReadyToInstall
+        assertEquals(apk.toList(), ready.file.readBytes().toList())
+    }
+
+    @Test
     fun `download verifies sha256 and lands a file`() = runTest(dispatcher) {
         val apk = "apk-bytes".toByteArray()
         val hex = MessageDigest.getInstance("SHA-256").digest(apk).joinToString("") { "%02x".format(it) }
@@ -149,5 +165,10 @@ class FakeRemote(
         dest.parentFile?.mkdirs()
         dest.writeBytes(bytes)
         onProgress(bytes.size.toLong(), bytes.size.toLong())
+    }
+
+    override suspend fun probe(url: String): Boolean {
+        if (files.containsKey(url)) return true
+        return url.contains("releases/latest") || url.contains("api.github.com")
     }
 }

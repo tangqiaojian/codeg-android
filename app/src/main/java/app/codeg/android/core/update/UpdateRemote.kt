@@ -5,6 +5,8 @@ import java.io.File
 interface UpdateRemote {
     suspend fun getText(url: String): String
     suspend fun download(url: String, dest: File, onProgress: (received: Long, total: Long) -> Unit)
+    /** Cheap reachability check; must return quickly and not hang on a blocked CDN. */
+    suspend fun probe(url: String): Boolean
 }
 
 interface AppUpdatePrefs {

@@ -42,7 +42,8 @@ class AppUpdateManager(
             _ui.value = AppUpdateUi.Checking
             val current = currentVersionName()
             val json = try {
-                firstSuccess(UpdateMirrors.candidates(latestApiUrl)) { remote.getText(it) }
+                val url = UpdateUrlPicker.pick(UpdateMirrors.candidates(latestApiUrl)) { remote.probe(it) }
+                remote.getText(url)
             } catch (_: Exception) {
                 _ui.value = AppUpdateUi.Error(AppUpdateError.NETWORK)
                 return@withContext
@@ -81,10 +82,9 @@ class AppUpdateManager(
         _ui.value = AppUpdateUi.Downloading(available, 0L, available.apkSize)
         try {
             withContext(io) {
-                firstSuccess(UpdateMirrors.candidates(available.apkUrl)) { url ->
-                    remote.download(url, dest) { received, total ->
-                        _ui.value = AppUpdateUi.Downloading(available, received, total.coerceAtLeast(0L))
-                    }
+                val url = UpdateUrlPicker.pick(UpdateMirrors.candidates(available.apkUrl)) { remote.probe(it) }
+                remote.download(url, dest) { received, total ->
+                    _ui.value = AppUpdateUi.Downloading(available, received, total.coerceAtLeast(0L))
                 }
                 if (!dest.exists() || dest.length() == 0L) {
                     dest.delete()
@@ -94,7 +94,8 @@ class AppUpdateManager(
                 val checksumUrl = available.checksumUrl
                 if (checksumUrl != null) {
                     val body = try {
-                        firstSuccess(UpdateMirrors.candidates(checksumUrl)) { remote.getText(it) }
+                        val shaUrl = UpdateUrlPicker.pick(UpdateMirrors.candidates(checksumUrl)) { remote.probe(it) }
+                        remote.getText(shaUrl)
                     } catch (e: CancellationException) {
                         throw e
                     } catch (_: Exception) {
@@ -136,19 +137,5 @@ class AppUpdateManager(
         }
         File(File(cacheDir, "updates"), "codeg-${update.version}.apk").delete()
         _ui.value = AppUpdateUi.Available(update)
-    }
-
-    private suspend fun <T> firstSuccess(urls: List<String>, block: suspend (String) -> T): T {
-        var last: Exception? = null
-        for (url in urls) {
-            try {
-                return block(url)
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                last = e
-            }
-        }
-        throw last ?: IllegalStateException("no urls")
     }
 }

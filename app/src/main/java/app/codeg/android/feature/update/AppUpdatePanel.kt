@@ -105,7 +105,11 @@ private fun DownloadingBody(state: AppUpdateUi.Downloading, onCancel: () -> Unit
     val total = state.total.coerceAtLeast(0L)
     val fraction = if (total > 0L) (state.received.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
     Text(
-        stringResource(R.string.app_update_downloading, formatBytes(state.received), formatBytes(total)),
+        if (state.received <= 0L) {
+            stringResource(R.string.app_update_connecting)
+        } else {
+            stringResource(R.string.app_update_downloading, formatBytes(state.received), formatBytes(total))
+        },
         fontSize = 13.sp,
         color = colors.textSecondary,
     )

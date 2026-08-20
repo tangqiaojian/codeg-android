@@ -460,6 +460,7 @@
     <string name="app_update_up_to_date">This app is up to date.</string>
     <string name="app_update_available">Version %1$s is available</string>
     <string name="app_update_download">Download and install</string>
+    <string name="app_update_connecting">Finding a reachable download source…</string>
     <string name="app_update_downloading">Downloading %1$s / %2$s</string>
     <string name="app_update_install">Install</string>
     <string name="app_update_later">Later</string>

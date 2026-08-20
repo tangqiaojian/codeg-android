@@ -73,7 +73,11 @@ fun AppUpdateHost(viewModel: AppUpdateViewModel = hiltViewModel()) {
                 val fraction = if (total > 0L) (s.received.toFloat() / total.toFloat()).coerceIn(0f, 1f) else 0f
                 androidx.compose.foundation.layout.Column {
                     Text(
-                        stringResource(R.string.app_update_downloading, formatBytes(s.received), formatBytes(total)),
+                        if (s.received <= 0L) {
+                            stringResource(R.string.app_update_connecting)
+                        } else {
+                            stringResource(R.string.app_update_downloading, formatBytes(s.received), formatBytes(total))
+                        },
                         color = colors.textSecondary,
                         fontSize = 13.sp,
                     )

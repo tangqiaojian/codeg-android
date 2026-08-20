@@ -460,6 +460,7 @@
     <string name="app_update_up_to_date">已是最新版本。</string>
     <string name="app_update_available">发现新版本 %1$s</string>
     <string name="app_update_download">下载并安装</string>
+    <string name="app_update_connecting">正在选择可用的下载线路…</string>
     <string name="app_update_downloading">正在下载 %1$s / %2$s</string>
     <string name="app_update_install">安装</string>
     <string name="app_update_later">稍后</string>

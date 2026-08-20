@@ -11,6 +11,28 @@ class OkHttpUpdateRemote(
     private val client: OkHttpClient = defaultClient(),
 ) : UpdateRemote {
 
+    private val probeClient: OkHttpClient = client.newBuilder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(5, TimeUnit.SECONDS)
+        .callTimeout(8, TimeUnit.SECONDS)
+        .build()
+
+    override suspend fun probe(url: String): Boolean {
+        val call = probeClient.newCall(
+            Request.Builder()
+                .url(url)
+                .header("User-Agent", "Codeg-Android")
+                .header("Range", "bytes=0-1023")
+                .build(),
+        )
+        return try {
+            call.execute().use { resp -> resp.isSuccessful || resp.code == 206 }
+        } catch (_: Exception) {
+            call.cancel()
+            false
+        }
+    }
+
     override suspend fun getText(url: String): String {
         val call = client.newCall(request(url))
         try {
@@ -63,7 +85,7 @@ class OkHttpUpdateRemote(
     companion object {
         fun defaultClient(): OkHttpClient =
             OkHttpClient.Builder()
-                .connectTimeout(30, TimeUnit.SECONDS)
+                .connectTimeout(8, TimeUnit.SECONDS)
                 .readTimeout(15, TimeUnit.MINUTES)
                 .writeTimeout(30, TimeUnit.SECONDS)
                 .followRedirects(true)
