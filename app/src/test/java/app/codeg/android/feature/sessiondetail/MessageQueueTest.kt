@@ -48,4 +48,16 @@ class MessageQueueTest {
     fun `blank text is not queued`() {
         assertTrue(PromptQueue.enqueue(emptyList(), "   ").isEmpty())
     }
+
+    @Test
+    fun `take removes an item so edit can put it back in the composer`() {
+        val a = PromptQueue.enqueue(emptyList(), "hello", id = "a")
+        val both = PromptQueue.enqueue(a, "keep", id = "b")
+        val (taken, rest) = PromptQueue.take(both, "a")
+        assertEquals("hello", taken?.text)
+        assertEquals(listOf("keep"), rest.map { it.text })
+        val missing = PromptQueue.take(both, "nope")
+        assertNull(missing.first)
+        assertEquals(listOf("hello", "keep"), missing.second.map { it.text })
+    }
 }

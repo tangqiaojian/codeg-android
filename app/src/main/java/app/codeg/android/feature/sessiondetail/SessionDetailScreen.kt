@@ -165,6 +165,13 @@ fun SessionDetailScreen(
             viewModel.consumeRestoredDraft()
         }
     }
+    LaunchedEffect(ui.editDraft) {
+        ui.editDraft?.let { edited ->
+            draft = AgentMentionDraft.fromWire(edited)
+            composerValue = TextFieldValue(edited, TextRange(edited.length))
+            viewModel.consumeEditDraft()
+        }
+    }
 
     if (showOptions) AgentOptionsSheet(
         viewModel = viewModel,
@@ -332,7 +339,7 @@ fun SessionDetailScreen(
                 MessageQueueBar(
                     queue = ui.queuedPrompts,
                     onRemove = viewModel::removeQueuedPrompt,
-                    onUpdate = viewModel::updateQueuedPrompt,
+                    onEdit = viewModel::editQueuedPrompt,
                 )
                 ui.pendingPermission?.let { p ->
                     PermissionRequestCard(

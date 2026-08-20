@@ -869,8 +869,10 @@
     <string name="compose_queue">Queue message</string>
     <string name="compose_queue_title">Queued · %1$d</string>
     <string name="compose_queue_remove">Remove queued message</string>
+    <string name="compose_queue_edit">Edit in composer</string>
     <string name="compose_queue_expand">Show queued messages</string>
     <string name="compose_queue_collapse">Hide queued messages</string>
+    <string name="compose_queue_sync_hint">Sends after this reply finishes — then it shows up on web.</string>
     <string name="session_status_expand">Show session status</string>
     <string name="session_status_collapse">Hide session status</string>
 

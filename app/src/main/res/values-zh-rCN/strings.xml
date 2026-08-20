@@ -869,8 +869,10 @@
     <string name="compose_queue">排队发送</string>
     <string name="compose_queue_title">排队中 · %1$d</string>
     <string name="compose_queue_remove">移除排队消息</string>
+    <string name="compose_queue_edit">回到输入框编辑</string>
     <string name="compose_queue_expand">展开排队消息</string>
     <string name="compose_queue_collapse">收起排队消息</string>
+    <string name="compose_queue_sync_hint">当前回复结束后会自动发送，网页那时才能看到。</string>
     <string name="session_status_expand">展开会话状态</string>
     <string name="session_status_collapse">收起会话状态</string>
 

@@ -12,11 +12,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.Icon
@@ -29,10 +27,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,12 +38,12 @@ import app.codeg.android.core.designsystem.theme.CodegTheme
 fun MessageQueueBar(
     queue: List<QueuedPrompt>,
     onRemove: (String) -> Unit,
-    onUpdate: (String, String) -> Unit,
+    onEdit: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (queue.isEmpty()) return
     val colors = CodegTheme.colors
-    var expanded by rememberSaveable { mutableStateOf(false) }
+    var expanded by rememberSaveable { mutableStateOf(true) }
     Column(
         modifier
             .fillMaxWidth()
@@ -62,14 +57,22 @@ fun MessageQueueBar(
                 .padding(horizontal = 4.dp, vertical = 2.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(
-                stringResource(R.string.compose_queue_title, queue.size),
-                color = colors.textSecondary,
-                fontSize = 12.sp,
-                modifier = Modifier.weight(1f),
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.compose_queue_title, queue.size),
+                    color = colors.textSecondary,
+                    fontSize = 12.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    stringResource(R.string.compose_queue_sync_hint),
+                    color = colors.textTertiary,
+                    fontSize = 11.sp,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
             IconButton(onClick = { expanded = !expanded }) {
                 Icon(
                     if (expanded) Icons.Rounded.KeyboardArrowUp else Icons.Rounded.KeyboardArrowDown,
@@ -91,7 +94,7 @@ fun MessageQueueBar(
                         index = index,
                         item = item,
                         onRemove = onRemove,
-                        onUpdate = onUpdate,
+                        onEdit = onEdit,
                     )
                 }
             }
@@ -104,10 +107,9 @@ private fun QueuedPromptRow(
     index: Int,
     item: QueuedPrompt,
     onRemove: (String) -> Unit,
-    onUpdate: (String, String) -> Unit,
+    onEdit: (String) -> Unit,
 ) {
     val colors = CodegTheme.colors
-    var draft by rememberSaveable(item.id) { mutableStateOf(item.text) }
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -120,27 +122,24 @@ private fun QueuedPromptRow(
             fontSize = 12.sp,
             modifier = Modifier.padding(end = 8.dp),
         )
-        BasicTextField(
-            value = draft,
-            onValueChange = { draft = it },
-            textStyle = androidx.compose.ui.text.TextStyle(
-                color = colors.textPrimary,
-                fontSize = 13.sp,
-            ),
-            cursorBrush = SolidColor(colors.accent),
-            singleLine = false,
-            maxLines = 4,
-            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-            keyboardActions = KeyboardActions(
-                onDone = { if (draft != item.text) onUpdate(item.id, draft) },
-            ),
+        Text(
+            item.text,
+            color = colors.textPrimary,
+            fontSize = 13.sp,
+            maxLines = 3,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier
                 .weight(1f)
-                .padding(vertical = 6.dp)
-                .onFocusChanged { focus ->
-                    if (!focus.isFocused && draft != item.text) onUpdate(item.id, draft)
-                },
+                .clickable { onEdit(item.id) }
+                .padding(vertical = 6.dp),
         )
+        IconButton(onClick = { onEdit(item.id) }) {
+            Icon(
+                Icons.Rounded.Edit,
+                contentDescription = stringResource(R.string.compose_queue_edit),
+                tint = colors.accent,
+            )
+        }
         IconButton(onClick = { onRemove(item.id) }) {
             Icon(
                 Icons.Rounded.Close,

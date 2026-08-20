@@ -35,6 +35,12 @@ object PromptQueue {
 
     fun remove(queue: List<QueuedPrompt>, id: String): List<QueuedPrompt> = queue.filterNot { it.id == id }
 
+    /** Pull one item out (web edit: return it to the composer). Missing id is a no-op. */
+    fun take(queue: List<QueuedPrompt>, id: String): Pair<QueuedPrompt?, List<QueuedPrompt>> {
+        val item = queue.firstOrNull { it.id == id } ?: return null to queue
+        return item to remove(queue, id)
+    }
+
     fun update(queue: List<QueuedPrompt>, id: String, text: String): List<QueuedPrompt> {
         val trimmed = text.trim()
         if (trimmed.isEmpty()) return remove(queue, id)

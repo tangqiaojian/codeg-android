@@ -207,7 +207,11 @@ class SessionDetailViewModel @Inject constructor(
                     touchStream()
                     // Reattach when the server reports the turn live — via an explicit
                     // in-flight user turn id or the conversation status (iOS parity).
-                    if (detail.inFlightUserTurnId != null || detail.summary.status.isLive) reattachIfLive()
+                    if (detail.inFlightUserTurnId != null || detail.summary.status.isLive) {
+                        reattachIfLive()
+                    } else {
+                        flushQueuedPrompt()
+                    }
                 } else {
                     // New task: load the draft pickers' sources (top-level open folders +
                     // installed/enabled agents) and pick sensible defaults — honoring a
@@ -860,6 +864,7 @@ class SessionDetailViewModel @Inject constructor(
         val id = conversationId ?: return
         viewModelScope.launch {
             refetchConversation()?.let { d -> applyTranscript(d) }
+            flushQueuedPrompt()
         }
     }
 
@@ -1139,6 +1144,10 @@ class SessionDetailViewModel @Inject constructor(
         if (_ui.value.restoreDraft != null) _ui.update { it.copy(restoreDraft = null) }
     }
 
+    fun consumeEditDraft() {
+        if (_ui.value.editDraft != null) _ui.update { it.copy(editDraft = null) }
+    }
+
     fun dismissNotice() = _ui.update { it.copy(notice = null) }
 
     fun dismissSessionFailures(ids: List<String>) {
@@ -1151,6 +1160,13 @@ class SessionDetailViewModel @Inject constructor(
 
     fun updateQueuedPrompt(id: String, text: String) {
         setQueuedPrompts(PromptQueue.update(_ui.value.queuedPrompts, id, text))
+    }
+
+    fun editQueuedPrompt(id: String) {
+        val (taken, rest) = PromptQueue.take(_ui.value.queuedPrompts, id)
+        if (taken == null) return
+        persistQueuedPrompts(rest)
+        _ui.update { it.copy(queuedPrompts = rest, editDraft = taken.text) }
     }
 
     fun onScreenVisible() {
@@ -1177,6 +1193,7 @@ class SessionDetailViewModel @Inject constructor(
             if (stream == null) reattachIfLive()
         } else {
             refetchConversation()?.let { applyTranscript(it) }
+            flushQueuedPrompt()
         }
         touchStream()
     }
@@ -2043,6 +2060,8 @@ data class SessionDetailUiState(
     val notice: String? = null,
     /** Set when a failed send returns the user's typed text to the composer (consumed once). */
     val restoreDraft: String? = null,
+    /** Always replaces the composer (web-style edit of a queued prompt). */
+    val editDraft: String? = null,
     val error: String? = null,
     val pendingPermission: PendingPermissionUi? = null,
     val pendingQuestion: PendingQuestionUi? = null,
