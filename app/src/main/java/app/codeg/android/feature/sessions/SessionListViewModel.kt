@@ -59,13 +59,19 @@ class SessionListViewModel @Inject constructor(
      */
     val grouped: StateFlow<GroupedSessions> =
         _ui
-            .map { GroupingInput(it.folders, it.conversations, it.search, it.scope) }
+            .map { GroupingInput(it.folders, it.conversations, it.search, it.scope, it.openFolderIds) }
             .distinctUntilChanged()
             .map {
                 GroupedSessions(
                     search = it.search,
                     scope = it.scope,
-                    sections = buildSessionSections(it.folders, it.conversations, it.search, it.scope),
+                    sections = buildSessionSections(
+                        it.folders,
+                        it.conversations,
+                        it.search,
+                        it.scope,
+                        it.openFolderIds,
+                    ),
                 )
             }
             .flowOn(Dispatchers.Default)
@@ -86,6 +92,7 @@ class SessionListViewModel @Inject constructor(
         val conversations: List<ConversationSummary>,
         val search: String,
         val scope: SessionListScope,
+        val openFolderIds: Set<Int>?,
     )
 
     private var client: CodegClient? = null
@@ -141,14 +148,16 @@ class SessionListViewModel @Inject constructor(
         try {
             val result = coroutineScope {
                 val folders = async { runCatching { active.listFolders() }.getOrDefault(emptyList()) }
+                val open = async { runCatching { active.listOpenFolders() } }
                 val conversations = async { active.listConversations(includeChildren = true) }
-                folders.await() to conversations.await()
+                Triple(folders.await(), open.await(), conversations.await())
             }
             if (token != fetchGeneration) return
             _ui.update {
                 it.copy(
                     folders = result.first,
-                    conversations = result.second,
+                    openFolderIds = result.second.getOrNull()?.map { folder -> folder.id }?.toSet(),
+                    conversations = result.third,
                     hasLoaded = true,
                     isLoading = false,
                     isRefreshing = false,
@@ -251,6 +260,7 @@ data class GroupedSessions(
 /** Raw list state; the grouped display is derived by [SessionGrouping]. */
 data class SessionListUiState(
     val folders: List<FolderDetail> = emptyList(),
+    val openFolderIds: Set<Int>? = null,
     val conversations: List<ConversationSummary> = emptyList(),
     val search: String = "",
     val scope: SessionListScope = SessionListScope.ALL,

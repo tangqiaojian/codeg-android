@@ -13,8 +13,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -51,8 +53,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
@@ -235,7 +235,7 @@ fun SessionListScreen(
                             onChange = viewModel::onScopeChange,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                                .padding(horizontal = 16.dp, vertical = 2.dp),
                         )
                         SessionListSearchField(
                             value = ui.search,
@@ -369,38 +369,43 @@ private fun SessionScopeFilter(
 @Composable
 private fun SessionListSearchField(value: String, onValueChange: (String) -> Unit, modifier: Modifier = Modifier) {
     val colors = CodegTheme.colors
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
-        placeholder = { Text(stringResource(R.string.sessions_search_placeholder)) },
-        leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
-        trailingIcon = {
-            if (value.isNotEmpty()) {
-                IconButton(onClick = { onValueChange("") }) {
-                    Icon(Icons.Rounded.Close, contentDescription = stringResource(R.string.search_clear))
+    val placeholder = stringResource(R.string.sessions_search_placeholder)
+    Row(
+        modifier
+            .fillMaxWidth()
+            .height(36.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(colors.codeSurface)
+            .padding(horizontal = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(Icons.Rounded.Search, contentDescription = null, tint = colors.textTertiary, modifier = Modifier.size(16.dp))
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            singleLine = true,
+            textStyle = MaterialTheme.typography.bodyMedium.copy(color = colors.textPrimary, fontSize = 14.sp),
+            cursorBrush = androidx.compose.ui.graphics.SolidColor(colors.accent),
+            modifier = Modifier.weight(1f),
+            decorationBox = { inner ->
+                Box {
+                    if (value.isEmpty()) {
+                        Text(placeholder, color = colors.textTertiary, fontSize = 14.sp)
+                    }
+                    inner()
                 }
-            }
-        },
-        singleLine = true,
-        shape = RoundedCornerShape(10.dp),
-        colors = TextFieldDefaults.colors(
-            focusedContainerColor = colors.codeSurface,
-            unfocusedContainerColor = colors.codeSurface,
-            focusedIndicatorColor = Color.Transparent,
-            unfocusedIndicatorColor = Color.Transparent,
-            disabledIndicatorColor = Color.Transparent,
-            cursorColor = colors.accent,
-            focusedLeadingIconColor = colors.textSecondary,
-            unfocusedLeadingIconColor = colors.textTertiary,
-            focusedTrailingIconColor = colors.textSecondary,
-            unfocusedTrailingIconColor = colors.textTertiary,
-            focusedTextColor = colors.textPrimary,
-            unfocusedTextColor = colors.textPrimary,
-            focusedPlaceholderColor = colors.textTertiary,
-            unfocusedPlaceholderColor = colors.textTertiary,
-        ),
-    )
+            },
+        )
+        if (value.isNotEmpty()) {
+            Icon(
+                Icons.Rounded.Close,
+                contentDescription = stringResource(R.string.search_clear),
+                tint = colors.textTertiary,
+                modifier = Modifier.size(16.dp).clickable { onValueChange("") },
+            )
+        }
+    }
 }
 
 @Composable
@@ -609,11 +614,11 @@ private fun SessionListFolderRow(
                     onClick = onToggle,
                     onLongClick = { menuOpen = true },
                 )
-                .padding(horizontal = 8.dp, vertical = 10.dp),
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            FolderBadge(color = tile, size = 32.dp)
+            FolderBadge(color = tile, size = 24.dp)
             Column(Modifier.weight(1f)) {
                 Text(
                     folder.name,

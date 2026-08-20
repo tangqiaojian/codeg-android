@@ -83,14 +83,14 @@ fun CodegSegmented(
     modifier: Modifier = Modifier,
 ) {
     val colors = CodegTheme.colors
-    val track = if (colors.isDark) Color.White.copy(alpha = 0.12f) else Color(0xFF767680).copy(alpha = 0.16f)
-    val selectedFill = if (colors.isDark) Color.White.copy(alpha = 0.22f) else Color.White
+    val track = if (colors.isDark) Color.White.copy(alpha = 0.08f) else Color(0xFF767680).copy(alpha = 0.10f)
+    val selectedFill = if (colors.isDark) Color.White.copy(alpha = 0.16f) else Color.White
     Row(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(9.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(track)
-            .padding(2.dp),
+            .padding(1.dp),
     ) {
         options.forEachIndexed { index, label ->
             val selected = index == selectedIndex
@@ -100,12 +100,12 @@ fun CodegSegmented(
                     .clip(RoundedCornerShape(7.dp))
                     .background(if (selected) selectedFill else Color.Transparent)
                     .clickable { onSelect(index) }
-                    .padding(vertical = 7.dp),
+                    .padding(vertical = 4.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
                     label,
-                    fontSize = 13.sp,
+                    fontSize = 12.sp,
                     fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
                     color = if (selected) colors.textPrimary else colors.textSecondary,
                     maxLines = 1,

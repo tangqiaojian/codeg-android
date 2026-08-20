@@ -66,7 +66,7 @@ fun CollapsibleSectionHeader(
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .padding(top = 10.dp) // inter-section gap, kept outside the ripple
+            .padding(top = 6.dp) // inter-section gap, kept outside the ripple
             .clip(RoundedCornerShape(12.dp))
             .then(
                 if (collapsible) {
@@ -75,7 +75,7 @@ fun CollapsibleSectionHeader(
                     Modifier
                 },
             )
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(11.dp),
     ) {

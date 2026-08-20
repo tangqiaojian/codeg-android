@@ -127,6 +127,24 @@ class SessionSectionsTest {
     }
 
     @Test
+    fun `session worktrees are omitted from the Folders bucket`() {
+        val folders = listOf(
+            folder(1, "codeg-android"),
+            folder(2, "e272c76627634921bd22a3da1ab2fcb7"),
+            folder(3, "codeg-android-agent-mentions"),
+            folder(4, "hxzh-dev-1"),
+        )
+        val convs = listOf(
+            conv(10, folderId = 1, updated = 1),
+            conv(20, folderId = 2, updated = 2),
+            conv(30, folderId = 3, updated = 3),
+            conv(40, folderId = 4, updated = 4),
+        )
+        val names = buildSessionSections(folders, convs).first { it.id == "folders" }.folders.map { it.folder.name }
+        assertEquals(listOf("codeg-android", "hxzh-dev-1"), names)
+    }
+
+    @Test
     fun `chats scope hides workspace folders`() {
         val folders = listOf(folder(1, "repo"), folder(2, "Chat", isChat = true))
         val convs = listOf(conv(10, folderId = 1, updated = 1), conv(20, folderId = 2, updated = 2))

@@ -28,8 +28,54 @@ object FolderVisibility {
     fun isChatFolder(folder: FolderDetail): Boolean =
         folder.isChat || folder.name.equals("Chat", ignoreCase = true)
 
-    fun filterProjectFolders(folders: List<FolderDetail>): List<FolderDetail> =
-        folders.filter { it.parentId == null && !isChatFolder(it) }
+    /**
+     * Desktop sidebar Folders: imported workspaces only. Drops chats, nested
+     * worktrees, hex session-id dirs, and `{repo}-agent-*` worktrees that the
+     * server registers as top-level without [FolderDetail.parentId].
+     *
+     * [openFolderIds] is `list_open_folder_details` when the caller has it;
+     * null means "don't intersect" (tests / fallbacks).
+     */
+    fun filterProjectFolders(
+        folders: List<FolderDetail>,
+        openFolderIds: Set<Int>? = null,
+    ): List<FolderDetail> =
+        folders.filter { isSidebarWorkspace(it, folders, openFolderIds) }
+
+    fun isSidebarWorkspace(
+        folder: FolderDetail,
+        all: List<FolderDetail>,
+        openFolderIds: Set<Int>? = null,
+    ): Boolean {
+        if (folder.parentId != null) return false
+        if (isChatFolder(folder)) return false
+        if (openFolderIds != null && folder.id !in openFolderIds) return false
+        if (isSessionIdName(folder.name)) return false
+        if (isDerivedAgentWorkspace(folder, all)) return false
+        return true
+    }
+
+    /** Agent/session worktrees named with a 16–32 char hex id (no dashes). */
+    fun isSessionIdName(name: String): Boolean =
+        SESSION_ID_NAME.matches(name.trim())
+
+    /**
+     * `codeg-android-agent-mentions` is a worktree of `codeg-android`, not an
+     * imported project. Match `{existingWorkspace}-agent…` so a real repo
+     * named `my-agent-tools` still shows.
+     */
+    fun isDerivedAgentWorkspace(folder: FolderDetail, all: List<FolderDetail>): Boolean {
+        val lower = folder.name.lowercase()
+        return all.any { other ->
+            other.id != folder.id &&
+                other.parentId == null &&
+                !isChatFolder(other) &&
+                !isSessionIdName(other.name) &&
+                lower.startsWith(other.name.lowercase() + "-agent")
+        }
+    }
+
+    private val SESSION_ID_NAME = Regex("^[0-9a-fA-F]{16,}$")
 
     /**
      * The root repo folder for [folder] (itself when top-level, or when its

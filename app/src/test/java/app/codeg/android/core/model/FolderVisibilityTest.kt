@@ -7,8 +7,13 @@ import org.junit.Test
 /** Locks down the worktree-aware branch-switch routing ported from iOS `FolderVisibility`. */
 class FolderVisibilityTest {
 
-    private fun folder(id: Int, name: String = "f$id", parentId: Int? = null, isChat: Boolean = false) =
-        FolderDetail(id = id, name = name, path = "/p/$id", parentId = parentId, isChat = isChat)
+    private fun folder(
+        id: Int,
+        name: String = "f$id",
+        parentId: Int? = null,
+        isChat: Boolean = false,
+        path: String = "/p/$id",
+    ) = FolderDetail(id = id, name = name, path = path, parentId = parentId, isChat = isChat)
 
     @Test
     fun `filterTopLevel keeps only parentless folders`() {
@@ -26,6 +31,50 @@ class FolderVisibilityTest {
         )
 
         assertEquals(listOf(1), FolderVisibility.filterProjectFolders(all).map { it.id })
+    }
+
+    @Test
+    fun `hex session-id folders are not imported workspaces`() {
+        val all = listOf(
+            folder(1, name = "codeg-android"),
+            folder(2, name = "e272c76627634921bd22a3da1ab2fcb7"),
+            folder(3, name = "c0f18cffd34e47fa905a64ac1ad493b3"),
+        )
+        assertEquals(listOf("codeg-android"), FolderVisibility.filterProjectFolders(all).map { it.name })
+    }
+
+    @Test
+    fun `agent worktrees named after an imported repo are not sidebar folders`() {
+        val all = listOf(
+            folder(1, name = "codeg-android"),
+            folder(2, name = "codeg-android-agent-mentions"),
+            folder(3, name = "hxzh-dev-1"),
+        )
+        assertEquals(listOf("codeg-android", "hxzh-dev-1"), FolderVisibility.filterProjectFolders(all).map { it.name })
+    }
+
+    @Test
+    fun `open-folder intersection drops closed workspaces`() {
+        val all = listOf(
+            folder(1, name = "codeg-android"),
+            folder(2, name = "stale-clone"),
+        )
+        assertEquals(
+            listOf("codeg-android"),
+            FolderVisibility.filterProjectFolders(all, openFolderIds = setOf(1)).map { it.name },
+        )
+    }
+
+    @Test
+    fun `a human-named repo is kept even if its path is under chat-sessions`() {
+        val all = listOf(
+            folder(
+                1,
+                name = "codeg-android",
+                path = "/home/hxzh/.local/share/codeg/chat-sessions/2026-08-18/abc/codeg-android",
+            ),
+        )
+        assertEquals(listOf("codeg-android"), FolderVisibility.filterProjectFolders(all).map { it.name })
     }
 
     @Test

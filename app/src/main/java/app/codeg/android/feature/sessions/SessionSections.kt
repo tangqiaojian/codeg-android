@@ -70,6 +70,7 @@ fun buildSessionSections(
     conversations: List<ConversationSummary>,
     search: String = "",
     scope: SessionListScope = SessionListScope.ALL,
+    openFolderIds: Set<Int>? = null,
 ): List<SessionSection> {
     val query = search.trim()
     val searching = query.isNotEmpty()
@@ -107,7 +108,7 @@ fun buildSessionSections(
     }
 
     if (scope.includesWorkspace()) {
-        val roots = SessionGrouping.sortedFolders(FolderVisibility.filterProjectFolders(folders))
+        val roots = SessionGrouping.sortedFolders(FolderVisibility.filterProjectFolders(folders, openFolderIds))
         val entries = roots.mapNotNull { folder ->
             folderEntry(
                 folder = folder,

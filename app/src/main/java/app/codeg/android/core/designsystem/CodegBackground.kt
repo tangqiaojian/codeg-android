@@ -26,8 +26,8 @@ fun CodegBackground(
     // Stronger than a whisper: in light mode the base is near-white, so faint glows
     // washed out to a flat-white screen. These alphas make the two-glow gradient
     // clearly visible (the app's signature look) without becoming garish.
-    val accentGlow = colors.accent.copy(alpha = if (colors.isDark) 0.20f else 0.18f)
-    val coolGlow = CodegGlowCool.copy(alpha = if (colors.isDark) 0.18f else 0.15f)
+    val accentGlow = colors.accent.copy(alpha = if (colors.isDark) 0.07f else 0.04f)
+    val coolGlow = CodegGlowCool.copy(alpha = if (colors.isDark) 0.06f else 0.03f)
 
     Box(
         modifier = modifier

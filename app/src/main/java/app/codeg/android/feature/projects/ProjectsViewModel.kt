@@ -69,11 +69,19 @@ class ProjectsViewModel @Inject constructor(
         try {
             val result = coroutineScope {
                 val f = async { c.listFolders() }
+                val open = async { runCatching { c.listOpenFolders() } }
                 val conv = async { runCatching { c.listConversations() }.getOrDefault(emptyList()) }
-                f.await() to conv.await()
+                Triple(f.await(), open.await(), conv.await())
             }
             _ui.update {
-                it.copy(folders = result.first, conversations = result.second, hasLoaded = true, loading = false, refreshing = false)
+                it.copy(
+                    folders = result.first,
+                    openFolderIds = result.second.getOrNull()?.map { folder -> folder.id }?.toSet(),
+                    conversations = result.third,
+                    hasLoaded = true,
+                    loading = false,
+                    refreshing = false,
+                )
             }
         } catch (e: CancellationException) {
             throw e
@@ -143,6 +151,7 @@ class ProjectsViewModel @Inject constructor(
 
 data class ProjectsUiState(
     val folders: List<FolderDetail> = emptyList(),
+    val openFolderIds: Set<Int>? = null,
     val conversations: List<ConversationSummary> = emptyList(),
     val loading: Boolean = false,
     val refreshing: Boolean = false,

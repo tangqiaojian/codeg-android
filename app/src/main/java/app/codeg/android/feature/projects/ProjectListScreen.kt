@@ -124,7 +124,7 @@ fun ProjectListScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         InlineError(Icons.Rounded.FolderOpen, stringResource(R.string.projects_load_failed), ui.error!!, viewModel::refresh)
                     }
-                ui.hasLoaded && FolderVisibility.filterProjectFolders(ui.folders).isEmpty() ->
+                ui.hasLoaded && FolderVisibility.filterProjectFolders(ui.folders, ui.openFolderIds).isEmpty() ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(Icons.Rounded.FolderOpen, stringResource(R.string.projects_empty_title), stringResource(R.string.projects_empty_message))
                     }
@@ -139,7 +139,7 @@ fun ProjectListScreen(
                         // single card inside the lazy list is fine.
                         item {
                             GlassCard(padding = 0.dp) {
-                                val list = sortedFolders(FolderVisibility.filterProjectFolders(ui.folders))
+                                val list = sortedFolders(FolderVisibility.filterProjectFolders(ui.folders, ui.openFolderIds))
                                 list.forEachIndexed { index, folder ->
                                     if (index > 0) {
                                         HorizontalDivider(color = colors.hairline, modifier = Modifier.padding(start = 66.dp))

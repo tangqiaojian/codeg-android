@@ -73,7 +73,7 @@ fun codegColors(isDark: Boolean, accent: AccentPalette): CodegColors {
     } else {
         CodegColors(
             isDark = false,
-            bg = Color(0xFFF2F4F6),
+            bg = Color(0xFFF5F5F7),
             bgElevated = Color(0xFFFFFFFF),
             surfaceStroke = Color.Black.copy(alpha = 0.10f),
             hairline = Color.Black.copy(alpha = 0.07f),
