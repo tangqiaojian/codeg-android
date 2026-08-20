@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import app.codeg.android.core.data.ServerRepository
 import app.codeg.android.core.model.TokenUsageFacets
 import app.codeg.android.core.model.TokenUsageFilter
+import app.codeg.android.core.model.TokenUsagePoint
 import app.codeg.android.core.model.TokenUsageReport
 import app.codeg.android.core.model.TokenUsageSyncStatus
 import app.codeg.android.core.network.CodegClient
@@ -43,14 +44,24 @@ class TokenUsageViewModel @Inject constructor(
 
     fun setBucket(bucket: String) {
         if (_ui.value.bucket == bucket) return
-        _ui.update { it.copy(bucket = bucket) }
+        _ui.update { it.copy(bucket = bucket, selectedKey = null, dayReport = null) }
         refresh()
     }
 
     fun setRangeDays(days: Int) {
         if (_ui.value.rangeDays == days) return
-        _ui.update { it.copy(rangeDays = days) }
+        _ui.update { it.copy(rangeDays = days, selectedKey = null, dayReport = null) }
         refresh()
+    }
+
+    fun selectPoint(point: TokenUsagePoint) {
+        val key = point.bucketKey.ifBlank { point.start }
+        if (_ui.value.selectedKey == key) {
+            _ui.update { it.copy(selectedKey = null, dayReport = null, dayLoading = false) }
+            return
+        }
+        _ui.update { it.copy(selectedKey = key) }
+        viewModelScope.launch { loadDay(point) }
     }
 
     fun refresh() {
@@ -112,6 +123,29 @@ class TokenUsageViewModel @Inject constructor(
             _ui.update { it.copy(isLoading = false, isRefreshing = false, isSyncing = false, error = e.displayMessage()) }
         }
     }
+
+    private suspend fun loadDay(point: TokenUsagePoint) {
+        val active = client ?: return
+        val bounds = TokenUsageFormat.dayBounds(point, ZoneId.systemDefault()) ?: return
+        val key = point.bucketKey.ifBlank { point.start }
+        _ui.update { it.copy(dayLoading = true) }
+        val offsetMinutes = ZoneId.systemDefault().rules.getOffset(Instant.now()).totalSeconds / 60
+        val report = runCatching {
+            active.tokenUsageReport(
+                TokenUsageFilter(
+                    start = bounds.first,
+                    end = bounds.second,
+                    bucket = "day",
+                    tzOffsetMinutes = offsetMinutes,
+                    comparePrevious = false,
+                ),
+            )
+        }.getOrNull()
+        _ui.update {
+            if (it.selectedKey != key) it
+            else it.copy(dayReport = report, dayLoading = false)
+        }
+    }
 }
 
 data class TokenUsageUiState(
@@ -120,6 +154,9 @@ data class TokenUsageUiState(
     val syncStatus: TokenUsageSyncStatus? = null,
     val bucket: String = "day",
     val rangeDays: Int = 30,
+    val selectedKey: String? = null,
+    val dayReport: TokenUsageReport? = null,
+    val dayLoading: Boolean = false,
     val isLoading: Boolean = false,
     val isRefreshing: Boolean = false,
     val isSyncing: Boolean = false,

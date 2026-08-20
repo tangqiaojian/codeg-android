@@ -267,12 +267,22 @@
     <string name="token_usage_day">Day</string>
     <string name="token_usage_week">Week</string>
     <string name="token_usage_month">Month</string>
+    <string name="token_usage_range_7">7 days</string>
+    <string name="token_usage_range_30">30 days</string>
+    <string name="token_usage_range_90">90 days</string>
     <string name="token_usage_total">Total tokens</string>
     <string name="token_usage_input">Input</string>
     <string name="token_usage_output">Output</string>
+    <string name="token_usage_cache_write">Cache write</string>
+    <string name="token_usage_cache_read">Cache read</string>
     <string name="token_usage_turns">Turns</string>
+    <string name="token_usage_conversations">Sessions</string>
     <string name="token_usage_days">Active days</string>
+    <string name="token_usage_duration">Duration</string>
+    <string name="token_usage_vs_previous">%1$s vs previous period</string>
     <string name="token_usage_trend">Usage trend</string>
+    <string name="token_usage_daily">Daily usage</string>
+    <string name="token_usage_heatmap">Hourly heatmap</string>
     <string name="token_usage_series_points">%1$d data points</string>
     <string name="token_usage_by_agent">By agent</string>
     <string name="token_usage_by_folder">By folder</string>
@@ -280,6 +290,8 @@
     <string name="token_usage_streak">Activity streak</string>
     <string name="token_usage_streak_value">Current %1$d days · Longest %2$d days</string>
     <string name="token_usage_top_sessions">Top sessions</string>
+    <string name="token_usage_day_sessions">Sessions that day</string>
+    <string name="token_usage_synced">Last synced %1$s</string>
     <string name="token_usage_truncated">The report is capped to the most recent records.</string>
 
     <!-- Terminal -->

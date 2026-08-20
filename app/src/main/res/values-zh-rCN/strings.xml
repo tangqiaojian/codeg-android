@@ -264,15 +264,25 @@
     <string name="token_usage_refresh">刷新用量</string>
     <string name="token_usage_empty_title">暂无用量数据</string>
     <string name="token_usage_empty_message">同步智能体记录后即可生成用量仪表盘。</string>
-    <string name="token_usage_day">日</string>
-    <string name="token_usage_week">周</string>
-    <string name="token_usage_month">月</string>
+    <string name="token_usage_day">按日</string>
+    <string name="token_usage_week">按周</string>
+    <string name="token_usage_month">按月</string>
+    <string name="token_usage_range_7">近 7 天</string>
+    <string name="token_usage_range_30">近 30 天</string>
+    <string name="token_usage_range_90">近 90 天</string>
     <string name="token_usage_total">Token 总量</string>
     <string name="token_usage_input">输入</string>
     <string name="token_usage_output">输出</string>
+    <string name="token_usage_cache_write">缓存写入</string>
+    <string name="token_usage_cache_read">缓存读取</string>
     <string name="token_usage_turns">轮次</string>
+    <string name="token_usage_conversations">会话</string>
     <string name="token_usage_days">活跃天数</string>
+    <string name="token_usage_duration">耗时</string>
+    <string name="token_usage_vs_previous">较上期 %1$s</string>
     <string name="token_usage_trend">用量趋势</string>
+    <string name="token_usage_daily">每日明细</string>
+    <string name="token_usage_heatmap">时段热力</string>
     <string name="token_usage_series_points">%1$d 个数据点</string>
     <string name="token_usage_by_agent">按智能体</string>
     <string name="token_usage_by_folder">按文件夹</string>
@@ -280,6 +290,8 @@
     <string name="token_usage_streak">活跃连续记录</string>
     <string name="token_usage_streak_value">当前 %1$d 天 · 最长 %2$d 天</string>
     <string name="token_usage_top_sessions">高用量会话</string>
+    <string name="token_usage_day_sessions">当天会话</string>
+    <string name="token_usage_synced">上次同步 %1$s</string>
     <string name="token_usage_truncated">报告已限制为最近记录。</string>
 
     <!-- Terminal -->
