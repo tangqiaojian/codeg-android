@@ -950,6 +950,7 @@
     <!-- ===== Settings menu (navigation list) ===== -->
     <string name="settings_leaf_appearance">Appearance</string>
     <string name="settings_leaf_language">Language</string>
+    <string name="settings_leaf_live_status">Live status</string>
     <string name="settings_leaf_general">General</string>
     <string name="settings_leaf_quick_messages">Quick Messages</string>
     <string name="settings_leaf_agents">Agents</string>
@@ -971,6 +972,19 @@
     <string name="cc_toast_deleted">Deleted \"%1$s\".</string>
     <string name="cc_toast_delete_failed">Couldn\'t delete: %1$s</string>
     <string name="sessions_missing_token">Missing token for this server</string>
+    <string name="live_status_intro">Show the latest dispatched agent task in the status bar (Xiaomi notch / HyperOS island when the system allows it) and on a home-screen widget.</string>
+    <string name="live_status_notification_title">Status bar &amp; notch</string>
+    <string name="live_status_notification_subtitle">Ongoing notification of the latest running or review task. On Xiaomi HyperOS this can appear as a focus / island capsule.</string>
+    <string name="live_status_widget_title">Home widget</string>
+    <string name="live_status_widget_subtitle">After enabling, add “Live status” from the launcher widget picker.</string>
+    <string name="live_status_widget_kicker">Codeg</string>
+    <string name="live_status_xiaomi_note">Xiaomi island styling may require HyperOS focus-notification permission from Xiaomi. Without it, the same live status still shows as a normal ongoing notification and widget.</string>
+    <string name="live_status_channel_name">Live task</string>
+    <string name="live_status_channel_desc">Latest dispatched agent task</string>
+    <string name="live_status_idle_title">No active task</string>
+    <string name="live_status_idle_body">Waiting for the next dispatched session</string>
+    <string name="live_status_idle_ticker">Codeg idle</string>
+    <string name="live_status_off">Live status off</string>
     <string name="live_cancelled">Cancelled.</string>
     <string name="live_agent_connection_errored">The agent connection errored.</string>
     <string name="session_attachment_summary">Added %1$d image(s); %2$d skipped (too large or over the limit).</string>

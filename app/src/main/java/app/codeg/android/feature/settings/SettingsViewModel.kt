@@ -44,6 +44,8 @@ class SettingsViewModel @Inject constructor(
 
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { appSettingsStore.setThemeMode(mode) }
     fun setAccent(accentId: String) = viewModelScope.launch { appSettingsStore.setAccent(accentId) }
+    fun setLiveNotification(enabled: Boolean) = viewModelScope.launch { appSettingsStore.setLiveNotification(enabled) }
+    fun setLiveWidget(enabled: Boolean) = viewModelScope.launch { appSettingsStore.setLiveWidget(enabled) }
 }
 
 data class AboutInfo(

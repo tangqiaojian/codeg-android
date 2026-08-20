@@ -1,6 +1,10 @@
 package app.codeg.android.feature.settings
 
+import android.Manifest
+import android.os.Build
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -28,12 +32,14 @@ import androidx.compose.material.icons.rounded.Difference
 import androidx.compose.material.icons.rounded.Extension
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.NotificationsActive
 import androidx.compose.material.icons.rounded.Memory
 import androidx.compose.material.icons.rounded.Person
 import androidx.compose.material.icons.rounded.Policy
 import androidx.compose.material.icons.rounded.School
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Tune
+import androidx.compose.material.icons.rounded.Widgets
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +48,8 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.ListItemDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -75,6 +83,7 @@ import app.codeg.android.feature.update.AppUpdateViewModel
 private enum class SettingsLeaf(@StringRes val titleRes: Int, val icon: ImageVector, @StringRes val groupRes: Int, val implemented: Boolean) {
     APPEARANCE(R.string.settings_leaf_appearance, Icons.Rounded.Brush, R.string.settings_group_personalization, true),
     LANGUAGE(R.string.settings_leaf_language, Icons.Rounded.Language, R.string.settings_group_personalization, true),
+    LIVE_STATUS(R.string.settings_leaf_live_status, Icons.Rounded.NotificationsActive, R.string.settings_group_personalization, true),
     GENERAL(R.string.settings_leaf_general, Icons.Rounded.Tune, R.string.settings_group_personalization, true),
     QUICK_MESSAGES(R.string.settings_leaf_quick_messages, Icons.AutoMirrored.Rounded.Chat, R.string.settings_group_personalization, true),
     AGENTS(R.string.settings_leaf_agents, Icons.Rounded.Person, R.string.settings_group_ai_agents, true),
@@ -126,6 +135,7 @@ fun SettingsScreen(viewModel: SettingsViewModel = hiltViewModel()) {
                 null -> SettingsRoot(onSelect = { leaf = it; agentDetail = null })
                 SettingsLeaf.APPEARANCE -> AppearanceSettings(viewModel)
                 SettingsLeaf.LANGUAGE -> LanguageContent()
+                SettingsLeaf.LIVE_STATUS -> LiveStatusSettings(viewModel)
                 SettingsLeaf.ABOUT -> AboutScreen(viewModel)
                 SettingsLeaf.QUICK_MESSAGES -> QuickMessagesContent()
                 SettingsLeaf.GENERAL -> GeneralContent()
@@ -218,6 +228,67 @@ private fun AppearanceSettings(viewModel: SettingsViewModel) {
                 Text(stringResource(R.string.settings_accent_button), color = colors.onAccent, fontWeight = FontWeight.SemiBold)
             }
         }
+    }
+}
+
+@Composable
+private fun LiveStatusSettings(viewModel: SettingsViewModel) {
+    val colors = CodegTheme.colors
+    val settings by viewModel.settings.collectAsStateWithLifecycle()
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        viewModel.setLiveNotification(granted)
+    }
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        Text(stringResource(R.string.live_status_intro), color = colors.textSecondary, fontSize = 14.sp)
+        Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(14.dp)).background(colors.bgElevated.copy(alpha = 0.5f))) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.live_status_notification_title)) },
+                supportingContent = { Text(stringResource(R.string.live_status_notification_subtitle)) },
+                leadingContent = { SettingsIconBadge(Icons.Rounded.NotificationsActive) },
+                trailingContent = {
+                    Switch(
+                        checked = settings.liveNotification,
+                        onCheckedChange = { on ->
+                            if (on && Build.VERSION.SDK_INT >= 33) {
+                                permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                viewModel.setLiveNotification(on)
+                            }
+                        },
+                        colors = SwitchDefaults.colors(checkedTrackColor = colors.accent, checkedThumbColor = colors.onAccent),
+                    )
+                },
+                colors = ListItemDefaults.colors(
+                    containerColor = Color.Transparent,
+                    headlineColor = colors.textPrimary,
+                    supportingColor = colors.textTertiary,
+                ),
+            )
+            HorizontalDivider(color = colors.hairline, modifier = Modifier.padding(start = 60.dp))
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.live_status_widget_title)) },
+                supportingContent = { Text(stringResource(R.string.live_status_widget_subtitle)) },
+                leadingContent = { SettingsIconBadge(Icons.Rounded.Widgets) },
+                trailingContent = {
+                    Switch(
+                        checked = settings.liveWidget,
+                        onCheckedChange = viewModel::setLiveWidget,
+                        colors = SwitchDefaults.colors(checkedTrackColor = colors.accent, checkedThumbColor = colors.onAccent),
+                    )
+                },
+                colors = ListItemDefaults.colors(
+                    containerColor = Color.Transparent,
+                    headlineColor = colors.textPrimary,
+                    supportingColor = colors.textTertiary,
+                ),
+            )
+        }
+        Text(stringResource(R.string.live_status_xiaomi_note), color = colors.textTertiary, fontSize = 12.sp)
     }
 }
 
