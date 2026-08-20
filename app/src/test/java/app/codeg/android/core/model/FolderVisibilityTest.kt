@@ -22,9 +22,16 @@ class FolderVisibilityTest {
             folder(1, parentId = null, isChat = false),
             folder(2, parentId = 1, isChat = false),
             folder(3, parentId = null, isChat = true),
+            folder(4, name = "Chat", parentId = null, isChat = false),
         )
 
         assertEquals(listOf(1), FolderVisibility.filterProjectFolders(all).map { it.id })
+    }
+
+    @Test
+    fun `a folder named Chat counts as a chat folder even without the flag`() {
+        assertEquals(true, FolderVisibility.isChatFolder(folder(4, name = "Chat")))
+        assertEquals(false, FolderVisibility.isChatFolder(folder(1, name = "codeg-android")))
     }
 
     @Test

@@ -4,6 +4,7 @@ import app.codeg.android.core.model.AgentType
 import app.codeg.android.core.model.ConversationStatus
 import app.codeg.android.core.model.ConversationSummary
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.FolderVisibility
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -56,6 +57,37 @@ class SessionSectionsTest {
     }
 
     @Test
+    fun `Chat-named folders are not imported workspaces even without isChat`() {
+        val folders = listOf(
+            folder(1, "codeg-android"),
+            folder(2, "Chat"),
+            folder(3, "Chat"),
+        )
+        val convs = listOf(
+            conv(10, folderId = 1, updated = 1),
+            conv(20, folderId = 2, updated = 2),
+            conv(21, folderId = 3, updated = 3),
+        )
+        val sections = buildSessionSections(folders, convs, scope = SessionListScope.WORKSPACES)
+        assertEquals(listOf("codeg-android"), sections.single().folders.map { it.folder.name })
+        val chats = buildSessionSections(folders, convs, scope = SessionListScope.CHATS)
+        assertEquals(listOf(21, 20), chats.single().rows.map { it.conversation.id })
+    }
+
+    @Test
+    fun `Chat children of a workspace are not nested as extra folder rows`() {
+        val folders = listOf(
+            folder(1, "repo"),
+            FolderDetail(id = 2, name = "Chat", path = "/p/2", parentId = 1),
+        )
+        val convs = listOf(conv(10, folderId = 1, updated = 1), conv(20, folderId = 2, updated = 2))
+        val foldersSection = buildSessionSections(folders, convs).first { it.id == "folders" }
+        val repo = foldersSection.folders.single()
+        assertTrue(repo.children.isEmpty())
+        assertEquals(listOf(20), buildSessionSections(folders, convs).first { it.id == "chats" }.rows.map { it.conversation.id })
+    }
+
+    @Test
     fun `chat-folder conversations are flat chats, not a folder group`() {
         val folders = listOf(
             folder(1, "repo"),
@@ -69,7 +101,7 @@ class SessionSectionsTest {
         val sections = buildSessionSections(folders, convs)
         val chats = sections.first { it.id == "chats" }
         assertEquals(listOf(21, 20), chats.rows.map { it.conversation.id })
-        assertTrue(sections.first { it.id == "folders" }.folders.none { it.folder.isChat })
+        assertTrue(sections.first { it.id == "folders" }.folders.none { FolderVisibility.isChatFolder(it.folder) })
         assertEquals(listOf(10), sections.first { it.id == "folders" }.folders.single().conversations.map { it.conversation.id })
     }
 

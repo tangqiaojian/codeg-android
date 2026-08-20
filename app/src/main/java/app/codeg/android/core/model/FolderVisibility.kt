@@ -21,8 +21,15 @@ object FolderVisibility {
     fun filterTopLevel(folders: List<FolderDetail>): List<FolderDetail> =
         folders.filter { it.parentId == null }
 
+    /**
+     * Chat containers the server auto-creates (often named "Chat"). They are
+     * not imported workspaces and must not appear in the Folders bucket.
+     */
+    fun isChatFolder(folder: FolderDetail): Boolean =
+        folder.isChat || folder.name.equals("Chat", ignoreCase = true)
+
     fun filterProjectFolders(folders: List<FolderDetail>): List<FolderDetail> =
-        folders.filter { it.parentId == null && !it.isChat }
+        folders.filter { it.parentId == null && !isChatFolder(it) }
 
     /**
      * The root repo folder for [folder] (itself when top-level, or when its

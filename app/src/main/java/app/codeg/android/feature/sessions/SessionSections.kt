@@ -81,16 +81,18 @@ fun buildSessionSections(
         .filter { it.parentId != null && it.parentId in knownIds }
         .groupBy { it.parentId!! }
     val topLevel = visible.filter { it.parentId == null || it.parentId !in knownIds }
-    val hasChatFolders = folders.any { it.isChat }
+    val hasChatFolders = folders.any { FolderVisibility.isChatFolder(it) }
     val knownFolderIds = folders.map { it.id }.toSet()
     val unpinned = topLevel.filter { !it.isPinned }
     val unpinnedByFolder = unpinned.groupBy { it.folderId }
-    val worktreesByParent = folders.filter { it.parentId != null }.groupBy { it.parentId!! }
+    val worktreesByParent = folders
+        .filter { it.parentId != null && !FolderVisibility.isChatFolder(it) }
+        .groupBy { it.parentId!! }
     val out = ArrayList<SessionSection>()
 
     fun isChatConversation(conversation: ConversationSummary): Boolean {
         val folder = folderById[conversation.folderId] ?: return false
-        return if (hasChatFolders) folder.isChat else true
+        return if (hasChatFolders) FolderVisibility.isChatFolder(folder) else true
     }
 
     if (scope.includesChats()) {
@@ -105,7 +107,7 @@ fun buildSessionSections(
     }
 
     if (scope.includesWorkspace()) {
-        val roots = SessionGrouping.sortedFolders(folders.filter { it.parentId == null && !it.isChat })
+        val roots = SessionGrouping.sortedFolders(FolderVisibility.filterProjectFolders(folders))
         val entries = roots.mapNotNull { folder ->
             folderEntry(
                 folder = folder,
@@ -156,7 +158,9 @@ fun buildSessionSections(
     // Orphan worktrees (parent missing from the folder list) still belong in Folders.
     if (scope.includesWorkspace()) {
         val orphans = SessionGrouping.sortedFolders(
-            folders.filter { it.parentId != null && it.parentId !in knownFolderIds && !it.isChat },
+            folders.filter {
+                it.parentId != null && it.parentId !in knownFolderIds && !FolderVisibility.isChatFolder(it)
+            },
         ).mapNotNull { folder ->
             folderEntry(
                 folder = folder,

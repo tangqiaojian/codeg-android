@@ -60,6 +60,7 @@ import app.codeg.android.core.designsystem.component.LoadingView
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.designsystem.theme.colorFromHex
 import app.codeg.android.core.model.FolderDetail
+import app.codeg.android.core.model.FolderVisibility
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -117,7 +118,7 @@ fun ProjectListScreen(
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         InlineError(Icons.Rounded.FolderOpen, stringResource(R.string.projects_load_failed), ui.error!!, viewModel::refresh)
                     }
-                ui.hasLoaded && ui.folders.isEmpty() ->
+                ui.hasLoaded && FolderVisibility.filterProjectFolders(ui.folders).isEmpty() ->
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         EmptyState(Icons.Rounded.FolderOpen, stringResource(R.string.projects_empty_title), stringResource(R.string.projects_empty_message))
                     }
@@ -132,7 +133,7 @@ fun ProjectListScreen(
                         // single card inside the lazy list is fine.
                         item {
                             GlassCard(padding = 0.dp) {
-                                val list = sortedFolders(ui.folders)
+                                val list = sortedFolders(FolderVisibility.filterProjectFolders(ui.folders))
                                 list.forEachIndexed { index, folder ->
                                     if (index > 0) {
                                         HorizontalDivider(color = colors.hairline, modifier = Modifier.padding(start = 66.dp))
