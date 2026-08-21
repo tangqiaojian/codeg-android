@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material3.Icon
@@ -39,6 +40,7 @@ fun MessageQueueBar(
     queue: List<QueuedPrompt>,
     onRemove: (String) -> Unit,
     onEdit: (String) -> Unit,
+    onRetry: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     if (queue.isEmpty()) return
@@ -95,6 +97,7 @@ fun MessageQueueBar(
                         item = item,
                         onRemove = onRemove,
                         onEdit = onEdit,
+                        onRetry = onRetry,
                     )
                 }
             }
@@ -108,8 +111,10 @@ private fun QueuedPromptRow(
     item: QueuedPrompt,
     onRemove: (String) -> Unit,
     onEdit: (String) -> Unit,
+    onRetry: (String) -> Unit,
 ) {
     val colors = CodegTheme.colors
+    val sending = item.status == QueuedPromptStatus.SENDING
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -122,30 +127,52 @@ private fun QueuedPromptRow(
             fontSize = 12.sp,
             modifier = Modifier.padding(end = 8.dp),
         )
-        Text(
-            item.text,
-            color = colors.textPrimary,
-            fontSize = 13.sp,
-            maxLines = 3,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier
+        Column(
+            Modifier
                 .weight(1f)
-                .clickable { onEdit(item.id) }
+                .then(if (sending) Modifier else Modifier.clickable { onEdit(item.id) })
                 .padding(vertical = 6.dp),
-        )
-        IconButton(onClick = { onEdit(item.id) }) {
-            Icon(
-                Icons.Rounded.Edit,
-                contentDescription = stringResource(R.string.compose_queue_edit),
-                tint = colors.accent,
+        ) {
+            Text(
+                item.text,
+                color = colors.textPrimary,
+                fontSize = 13.sp,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
             )
+            val status = when (item.status) {
+                QueuedPromptStatus.SENDING -> stringResource(R.string.compose_queue_sending)
+                QueuedPromptStatus.RETRY -> stringResource(R.string.compose_queue_waiting)
+                QueuedPromptStatus.PENDING -> null
+            }
+            if (status != null) {
+                Text(status, color = colors.textTertiary, fontSize = 11.sp)
+            }
         }
-        IconButton(onClick = { onRemove(item.id) }) {
-            Icon(
-                Icons.Rounded.Close,
-                contentDescription = stringResource(R.string.compose_queue_remove),
-                tint = colors.textSecondary,
-            )
+        if (item.status == QueuedPromptStatus.RETRY) {
+            IconButton(onClick = { onRetry(item.id) }) {
+                Icon(
+                    Icons.Rounded.Refresh,
+                    contentDescription = stringResource(R.string.compose_queue_retry),
+                    tint = colors.accent,
+                )
+            }
+        }
+        if (!sending) {
+            IconButton(onClick = { onEdit(item.id) }) {
+                Icon(
+                    Icons.Rounded.Edit,
+                    contentDescription = stringResource(R.string.compose_queue_edit),
+                    tint = colors.accent,
+                )
+            }
+            IconButton(onClick = { onRemove(item.id) }) {
+                Icon(
+                    Icons.Rounded.Close,
+                    contentDescription = stringResource(R.string.compose_queue_remove),
+                    tint = colors.textSecondary,
+                )
+            }
         }
     }
 }

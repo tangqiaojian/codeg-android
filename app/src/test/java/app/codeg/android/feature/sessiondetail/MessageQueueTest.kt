@@ -50,6 +50,59 @@ class MessageQueueTest {
     }
 
     @Test
+    fun `ack happens only after the server accepts so a failed flush keeps the head`() {
+        val queued = PromptQueue.enqueue(emptyList(), "keep-me", id = "a", clientMessageId = "cid-a")
+        val sending = PromptQueue.markSending(queued, "a")
+        assertEquals(QueuedPromptStatus.SENDING, sending.single().status)
+        assertEquals("cid-a", sending.single().clientMessageId)
+        val retried = PromptQueue.markRetry(sending, "a")
+        assertEquals(listOf("keep-me"), retried.map { it.text })
+        assertEquals("cid-a", retried.single().clientMessageId)
+        assertEquals(QueuedPromptStatus.RETRY, retried.single().status)
+        val acked = PromptQueue.remove(retried, "a")
+        assertTrue(acked.isEmpty())
+    }
+
+    @Test
+    fun `process death mid-send revives the item as retry with the same client id`() {
+        val sending = PromptQueue.markSending(
+            PromptQueue.enqueue(emptyList(), "hello", id = "a", clientMessageId = "cid"),
+            "a",
+        )
+        val revived = PromptQueue.revive(sending)
+        assertEquals(QueuedPromptStatus.RETRY, revived.single().status)
+        assertEquals("cid", revived.single().clientMessageId)
+    }
+
+    @Test
+    fun `sending items cannot be edited or cleared by update`() {
+        val sending = PromptQueue.markSending(
+            PromptQueue.enqueue(emptyList(), "keep", id = "a", clientMessageId = "cid"),
+            "a",
+        )
+        assertEquals(sending, PromptQueue.update(sending, "a", "nope"))
+        assertEquals(sending, PromptQueue.update(sending, "a", "   "))
+    }
+
+    @Test
+    fun `editing text mints a new clientMessageId`() {
+        val queued = PromptQueue.enqueue(emptyList(), "old", id = "a", clientMessageId = "cid-old")
+        val updated = PromptQueue.update(queued, "a", "new")
+        assertEquals("new", updated.single().text)
+        assertTrue(updated.single().clientMessageId != "cid-old")
+        assertEquals(QueuedPromptStatus.PENDING, updated.single().status)
+    }
+
+    @Test
+    fun `requeueFront reuses the bounced clientMessageId`() {
+        val later = PromptQueue.enqueue(emptyList(), "later", id = "b", clientMessageId = "cid-b")
+        val bounced = PromptQueue.requeueFront(later, "bounced", id = "a", clientMessageId = "cid-a")
+        assertEquals(listOf("bounced", "later"), bounced.map { it.text })
+        assertEquals("cid-a", bounced.first().clientMessageId)
+        assertEquals(QueuedPromptStatus.RETRY, bounced.first().status)
+    }
+
+    @Test
     fun `take removes an item so edit can put it back in the composer`() {
         val a = PromptQueue.enqueue(emptyList(), "hello", id = "a")
         val both = PromptQueue.enqueue(a, "keep", id = "b")

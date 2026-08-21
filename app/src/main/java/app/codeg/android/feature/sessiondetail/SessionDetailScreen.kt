@@ -340,6 +340,7 @@ fun SessionDetailScreen(
                     queue = ui.queuedPrompts,
                     onRemove = viewModel::removeQueuedPrompt,
                     onEdit = viewModel::editQueuedPrompt,
+                    onRetry = viewModel::retryQueuedPrompt,
                 )
                 ui.pendingPermission?.let { p ->
                     PermissionRequestCard(

@@ -171,6 +171,7 @@ class SessionDetailViewModel @Inject constructor(
             try {
                 val p = repository.selectedProfile.first() ?: throw IllegalStateException("No server selected")
                 profile = p
+                restoreQueuedPromptsFromDisk()
                 val c = repository.client(p) ?: throw IllegalStateException("Missing token for this server")
                 client = c
 
@@ -267,11 +268,12 @@ class SessionDetailViewModel @Inject constructor(
      * consumes the composer's pending attachments, so images the user was staging
      * survive.
      */
-    private fun send(text: String, withAttachments: Boolean) {
+    private fun send(text: String, withAttachments: Boolean, fromQueue: QueuedPrompt? = null) {
         val trimmed = text.trim()
         val attachments = if (withAttachments) _ui.value.attachments else emptyList()
         if (trimmed.isEmpty() && attachments.isEmpty()) return
         if (_ui.value.isInFlight) {
+            if (fromQueue != null) return
             if (trimmed.isEmpty()) return
             setQueuedPrompts(PromptQueue.enqueue(_ui.value.queuedPrompts, trimmed))
             return
@@ -317,7 +319,7 @@ class SessionDetailViewModel @Inject constructor(
                 isDraftEditable = false,
             )
         }
-        sendJob = viewModelScope.launch { runSend(trimmed, userTurn, attachments, wasNew) }
+        sendJob = viewModelScope.launch { runSend(trimmed, userTurn, attachments, wasNew, fromQueue) }
     }
 
     private suspend fun runSend(
@@ -325,10 +327,22 @@ class SessionDetailViewModel @Inject constructor(
         userTurn: MessageTurn,
         attachments: List<Attachment>,
         createdConversation: Boolean,
+        fromQueue: QueuedPrompt?,
     ) {
-        val c = client ?: return
+        val c = client
+        if (c == null) {
+            if (fromQueue != null) {
+                discardOptimistic(
+                    userTurn, text, attachments, createdConversation, createdConversationId = null,
+                    notice = appContext.getString(R.string.compose_queue_waiting),
+                    restoreComposer = false,
+                )
+                setQueuedPrompts(PromptQueue.markRetry(_ui.value.queuedPrompts, fromQueue.id))
+            }
+            return
+        }
         // One id for both attempts so the server dedupes if the first prompt actually landed.
-        val clientMessageId = UUID.randomUUID().toString()
+        val clientMessageId = fromQueue?.clientMessageId ?: UUID.randomUUID().toString()
         // The EXACT conversation this send created up front (a first send), so a rollback deletes
         // that row and not whatever conversationId happens to be by the time the failure lands.
         var createdId: Int? = null
@@ -349,19 +363,49 @@ class SessionDetailViewModel @Inject constructor(
                     attemptSend(c, text, attachments, clientMessageId, freshConnection = true)
                 } else throw e
             }
+            if (fromQueue != null) {
+                setQueuedPrompts(PromptQueue.remove(_ui.value.queuedPrompts, fromQueue.id))
+            }
             flushRetryAttempt = 0
             _ui.update {
                 if (it.isInFlight) it.copy(sendStatus = appContext.getString(R.string.live_status_thinking)) else it
             }
         } catch (e: CancellationException) {
+            if (fromQueue != null) {
+                setQueuedPrompts(PromptQueue.markRetry(_ui.value.queuedPrompts, fromQueue.id))
+            }
             throw e
         } catch (e: ApiError.TurnInProgress) {
-            discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = null)
-            setQueuedPrompts(PromptQueue.requeueFront(_ui.value.queuedPrompts, text))
-            _ui.update { it.copy(restoreDraft = null) }
+            discardOptimistic(
+                userTurn, text, attachments, createdConversation, createdId,
+                notice = null, restoreComposer = false,
+            )
+            if (fromQueue != null) {
+                setQueuedPrompts(PromptQueue.markRetry(_ui.value.queuedPrompts, fromQueue.id))
+            } else {
+                setQueuedPrompts(
+                    PromptQueue.requeueFront(
+                        _ui.value.queuedPrompts,
+                        text,
+                        clientMessageId = clientMessageId,
+                    ),
+                )
+            }
             scheduleFlushRetry()
         } catch (e: Exception) {
-            discardOptimistic(userTurn, text, attachments, createdConversation, createdId, notice = e.displayMessage())
+            if (fromQueue != null) {
+                discardOptimistic(
+                    userTurn, text, attachments, createdConversation, createdId,
+                    notice = e.displayMessage(), restoreComposer = false,
+                )
+                setQueuedPrompts(PromptQueue.markRetry(_ui.value.queuedPrompts, fromQueue.id))
+                scheduleFlushRetry()
+            } else {
+                discardOptimistic(
+                    userTurn, text, attachments, createdConversation, createdId,
+                    notice = e.displayMessage(),
+                )
+            }
         }
     }
 
@@ -1101,6 +1145,7 @@ class SessionDetailViewModel @Inject constructor(
         createdConversation: Boolean,
         createdConversationId: Int?,
         notice: String?,
+        restoreComposer: Boolean = true,
     ) {
         liveBuilder = null
         closeStream()
@@ -1108,6 +1153,10 @@ class SessionDetailViewModel @Inject constructor(
         // orphan (by the id this send created, not the current conversationId) so it doesn't
         // linger, and never touch a conversation a later send may already be using.
         if (createdConversationId != null) {
+            forgetQueuedPromptsFor(createdConversationId)
+            if (savedStateHandle.get<Int>("id") == createdConversationId) {
+                savedStateHandle["id"] = conversationIdArg ?: -1
+            }
             viewModelScope.launch {
                 runCatching { client?.deleteConversation(createdConversationId) }
                 repository.notifyConversationsChanged()
@@ -1133,7 +1182,7 @@ class SessionDetailViewModel @Inject constructor(
                 // Restore the composer so a failed send never silently loses the user's work —
                 // but don't clobber fresh input the user added during the in-flight window (the
                 // draft guard lives in the screen; attachments are owned here). iOS parity.
-                restoreDraft = text.ifEmpty { null },
+                restoreDraft = if (restoreComposer) text.ifEmpty { null } else null,
                 attachments = if (it.attachments.isEmpty()) attachments else it.attachments,
                 summary = if (createdConversation) null else it.summary,
                 isNew = if (createdConversation) true else it.isNew,
@@ -1159,14 +1208,20 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     fun removeQueuedPrompt(id: String) {
+        val item = _ui.value.queuedPrompts.firstOrNull { it.id == id } ?: return
+        if (item.status == QueuedPromptStatus.SENDING) return
         setQueuedPrompts(PromptQueue.remove(_ui.value.queuedPrompts, id))
     }
 
     fun updateQueuedPrompt(id: String, text: String) {
+        val item = _ui.value.queuedPrompts.firstOrNull { it.id == id } ?: return
+        if (item.status == QueuedPromptStatus.SENDING) return
         setQueuedPrompts(PromptQueue.update(_ui.value.queuedPrompts, id, text))
     }
 
     fun editQueuedPrompt(id: String) {
+        val current = _ui.value.queuedPrompts.firstOrNull { it.id == id } ?: return
+        if (current.status == QueuedPromptStatus.SENDING) return
         val (taken, rest) = PromptQueue.take(_ui.value.queuedPrompts, id)
         if (taken == null) return
         persistQueuedPrompts(rest)
@@ -1228,11 +1283,19 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     private fun flushQueuedPrompt() {
+        if (client == null) return
         if (!PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) return
-        val (head, rest) = PromptQueue.dequeue(_ui.value.queuedPrompts)
-        if (head == null) return
-        setQueuedPrompts(rest)
-        send(head.text)
+        val head = PromptQueue.peek(_ui.value.queuedPrompts) ?: return
+        if (head.status == QueuedPromptStatus.SENDING) return
+        setQueuedPrompts(PromptQueue.markSending(_ui.value.queuedPrompts, head.id))
+        send(head.text, withAttachments = false, fromQueue = head)
+    }
+
+    fun retryQueuedPrompt(id: String) {
+        if (_ui.value.isInFlight) return
+        if (_ui.value.queuedPrompts.none { it.id == id }) return
+        flushRetryAttempt = 0
+        flushQueuedPrompt()
     }
 
     private fun scheduleFlushRetry(resetAttempt: Boolean = false) {
@@ -1252,38 +1315,59 @@ class SessionDetailViewModel @Inject constructor(
         _ui.update { it.copy(queuedPrompts = queue) }
     }
 
+    private var queueHandleWasAuthoritative = false
+
     private fun restoreQueuedPrompts() {
-        val restored = PromptQueueStore.decode(savedStateHandle.get<String>(QUEUE_STATE_KEY))
-            .ifEmpty {
-                conversationIdArg?.let { retainedQueues[it] }.orEmpty()
-            }
-            .ifEmpty {
-                conversationIdArg?.let { id ->
-                    PromptQueueStore.decode(queuePrefs().getString(queuePrefsKey(id), null))
-                }.orEmpty()
-            }
-        if (restored.isNotEmpty()) {
-            persistQueuedPrompts(restored)
-            _ui.update { it.copy(queuedPrompts = restored) }
+        val handleRaw = savedStateHandle.get<String>(QUEUE_STATE_KEY)
+        if (PromptQueueStore.isRecord(handleRaw)) {
+            queueHandleWasAuthoritative = true
+            applyRestoredQueue(PromptQueue.revive(PromptQueueStore.decode(handleRaw)))
         }
+    }
+
+    private fun restoreQueuedPromptsFromDisk() {
+        if (queueHandleWasAuthoritative) return
+        val id = conversationId ?: conversationIdArg ?: return
+        val restored = retainedQueues[queueStorageKey(id)].orEmpty()
+            .ifEmpty { PromptQueueStore.decode(queuePrefs().getString(queuePrefsKey(id), null)) }
+            .ifEmpty { PromptQueueStore.decode(queuePrefs().getString(legacyQueuePrefsKey(id), null)) }
+        applyRestoredQueue(PromptQueue.revive(restored))
+    }
+
+    private fun applyRestoredQueue(restored: List<QueuedPrompt>) {
+        persistQueuedPrompts(restored)
+        _ui.update { it.copy(queuedPrompts = restored) }
     }
 
     private fun persistQueuedPrompts(queue: List<QueuedPrompt>) {
         val encoded = PromptQueueStore.encode(queue)
         savedStateHandle[QUEUE_STATE_KEY] = encoded
         val id = conversationId ?: conversationIdArg ?: return
+        val key = queueStorageKey(id)
+        val prefs = queuePrefs().edit().putString(queuePrefsKey(id), encoded)
         if (queue.isEmpty()) {
-            retainedQueues.remove(id)
-            queuePrefs().edit().remove(queuePrefsKey(id)).apply()
+            retainedQueues.remove(key)
         } else {
-            retainedQueues[id] = queue
-            queuePrefs().edit().putString(queuePrefsKey(id), encoded).apply()
+            retainedQueues[key] = queue
         }
+        prefs.commit()
+    }
+
+    private fun forgetQueuedPromptsFor(conversationId: Int) {
+        retainedQueues.remove(queueStorageKey(conversationId))
+        queuePrefs().edit()
+            .remove(queuePrefsKey(conversationId))
+            .remove(legacyQueuePrefsKey(conversationId))
+            .commit()
     }
 
     private fun queuePrefs() = appContext.getSharedPreferences(QUEUE_PREFS, Context.MODE_PRIVATE)
 
-    private fun queuePrefsKey(conversationId: Int) = "q-$conversationId"
+    private fun queueStorageKey(conversationId: Int) = "${profile?.id ?: "pending"}:$conversationId"
+
+    private fun queuePrefsKey(conversationId: Int) = "q-${queueStorageKey(conversationId)}"
+
+    private fun legacyQueuePrefsKey(conversationId: Int) = "q-$conversationId"
 
     private fun touchStream() {
         lastEventAt = System.currentTimeMillis()
@@ -1466,7 +1550,7 @@ class SessionDetailViewModel @Inject constructor(
     }
 
     companion object {
-        private val retainedQueues = ConcurrentHashMap<Int, List<QueuedPrompt>>()
+        private val retainedQueues = ConcurrentHashMap<String, List<QueuedPrompt>>()
     }
 
     // endregion

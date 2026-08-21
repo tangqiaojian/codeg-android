@@ -892,6 +892,9 @@
     <string name="compose_queue_expand">展开排队消息</string>
     <string name="compose_queue_collapse">收起排队消息</string>
     <string name="compose_queue_sync_hint">当前回复结束后会自动发送，网页那时才能看到。</string>
+    <string name="compose_queue_sending">正在发送…</string>
+    <string name="compose_queue_waiting">等待重试</string>
+    <string name="compose_queue_retry">立即重试</string>
     <string name="session_status_expand">展开会话状态</string>
     <string name="session_status_collapse">收起会话状态</string>
 

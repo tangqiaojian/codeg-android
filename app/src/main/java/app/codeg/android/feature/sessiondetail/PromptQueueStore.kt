@@ -11,11 +11,13 @@ object PromptQueueStore {
         encodeDefaults = true
     }
 
-    fun encode(queue: List<QueuedPrompt>): String =
-        if (queue.isEmpty()) "" else json.encodeToString(queue)
+    fun encode(queue: List<QueuedPrompt>): String = json.encodeToString(queue)
 
     fun decode(raw: String?): List<QueuedPrompt> {
         if (raw.isNullOrBlank()) return emptyList()
         return runCatching { json.decodeFromString<List<QueuedPrompt>>(raw) }.getOrDefault(emptyList())
     }
+
+    /** True when [raw] is an authoritative record, including an empty queue tombstone. */
+    fun isRecord(raw: String?): Boolean = raw != null
 }
