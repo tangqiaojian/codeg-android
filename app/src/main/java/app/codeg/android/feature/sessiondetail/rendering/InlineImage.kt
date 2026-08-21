@@ -4,6 +4,7 @@ import android.graphics.BitmapFactory
 import android.util.Base64
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -11,14 +12,20 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import app.codeg.android.R
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.model.ImageData
 
@@ -32,17 +39,29 @@ fun InlineImage(image: ImageData, caption: String?, modifier: Modifier = Modifie
             BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
         }.getOrNull()
     }
+    var expanded by remember { mutableStateOf(false) }
     Column(modifier.fillMaxWidth()) {
         if (bitmap != null) {
             Image(
                 bitmap = bitmap,
-                contentDescription = caption,
+                contentDescription = caption ?: stringResource(R.string.chat_image_expand),
                 contentScale = ContentScale.Fit,
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(max = 320.dp)
-                    .clip(RoundedCornerShape(10.dp)),
+                    .clip(RoundedCornerShape(10.dp))
+                    .clickable(
+                        role = Role.Button,
+                        onClickLabel = stringResource(R.string.chat_image_expand),
+                    ) { expanded = true },
             )
+            if (expanded) {
+                ImageLightbox(
+                    bitmap = bitmap,
+                    caption = caption,
+                    onDismiss = { expanded = false },
+                )
+            }
         } else {
             Text(
                 "[image]",

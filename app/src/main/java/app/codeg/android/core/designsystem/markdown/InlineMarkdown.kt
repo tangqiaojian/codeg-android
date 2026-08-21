@@ -11,16 +11,18 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.withStyle
+import app.codeg.android.core.common.ChatLink
 import app.codeg.android.core.designsystem.theme.CodegTheme
 
 /**
  * Inline-Markdown → [AnnotatedString] (the Compose analogue of iOS
  * `MarkdownText.attributed(from:)`, which used Apple's inline parser). Supports
  * `**bold**` / `__bold__`, `*italic*` / `_italic_`, `~~strike~~`, `` `code` ``,
- * and `[text](url)` links. Nesting is handled by recursion; code spans are
- * literal. Link URLs are attached as a string annotation under tag `URL`.
+ * `[text](url)` links, `![alt](url)` image-links, and bare http(s) URLs.
+ * Nesting is handled by recursion; code spans are literal. Openable URLs are
+ * attached as a string annotation under [ChatLink.URL_TAG] for [MarkdownText].
  */
-const val URL_TAG = "URL"
+const val URL_TAG = ChatLink.URL_TAG
 
 /** Cached inline-markdown for the current theme colors (recomputed if colors change).
  *  Slot-scoped `remember` only — deliberately NOT a shared cache, so the growing tail of
@@ -44,7 +46,7 @@ fun inlineMarkdown(
     codeBg: Color,
     codeColor: Color,
 ): AnnotatedString = buildAnnotatedString {
-    parseInline(this, raw, linkColor, codeBg, codeColor)
+    parseInline(this, raw, linkColor, codeBg, codeColor, autolink = true)
 }
 
 private fun parseInline(
@@ -53,6 +55,7 @@ private fun parseInline(
     linkColor: Color,
     codeBg: Color,
     codeColor: Color,
+    autolink: Boolean,
 ) {
     var i = 0
     val n = raw.length
@@ -89,7 +92,7 @@ private fun parseInline(
                 if (end > i + 1) {
                     flushPlain()
                     builder.withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor)
+                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, autolink)
                     }
                     i = end + 2
                 } else {
@@ -103,7 +106,7 @@ private fun parseInline(
                 if (end > i + 1) {
                     flushPlain()
                     builder.withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor)
+                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, autolink)
                     }
                     i = end + 2
                 } else {
@@ -117,7 +120,7 @@ private fun parseInline(
                 if (end > i) {
                     flushPlain()
                     builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                        parseInline(builder, raw.substring(i + 1, end), linkColor, codeBg, codeColor)
+                        parseInline(builder, raw.substring(i + 1, end), linkColor, codeBg, codeColor, autolink)
                     }
                     i = end + 1
                 } else {
@@ -125,20 +128,19 @@ private fun parseInline(
                 }
             }
 
+            // Markdown image ![alt](url) — skip the bang; the following '[' is a link.
+            c == '!' && i + 1 < n && raw[i + 1] == '[' -> i++
+
             // Link [text](url).
             c == '[' -> {
                 val close = raw.indexOf(']', i + 1)
                 if (close > i && close + 1 < n && raw[close + 1] == '(') {
-                    val urlEnd = raw.indexOf(')', close + 2)
+                    val urlEnd = closingParen(raw, close + 1)
                     if (urlEnd > close) {
                         val text = raw.substring(i + 1, close)
                         val url = raw.substring(close + 2, urlEnd)
                         flushPlain()
-                        builder.pushStringAnnotation(URL_TAG, url)
-                        builder.withStyle(SpanStyle(color = linkColor)) {
-                            parseInline(builder, text, linkColor, codeBg, codeColor)
-                        }
-                        builder.pop()
+                        emitLink(builder, text, url, linkColor, codeBg, codeColor)
                         i = urlEnd + 1
                     } else {
                         plain.append(c); i++
@@ -149,9 +151,50 @@ private fun parseInline(
             }
 
             else -> {
-                plain.append(c); i++
+                val match = if (autolink) ChatLink.matchAt(raw, i) else null
+                if (match != null) {
+                    flushPlain()
+                    emitLink(builder, match.raw, match.href, linkColor, codeBg, codeColor)
+                    i = match.endExclusive
+                } else {
+                    plain.append(c); i++
+                }
             }
         }
     }
     flushPlain()
+}
+
+private fun emitLink(
+    builder: AnnotatedString.Builder,
+    display: String,
+    url: String,
+    linkColor: Color,
+    codeBg: Color,
+    codeColor: Color,
+) {
+    val href = ChatLink.normalize(url)
+    if (href == null) {
+        parseInline(builder, display, linkColor, codeBg, codeColor, autolink = false)
+        return
+    }
+    builder.pushStringAnnotation(URL_TAG, href)
+    builder.withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+        parseInline(builder, display, linkColor, codeBg, codeColor, autolink = false)
+    }
+    builder.pop()
+}
+
+private fun closingParen(raw: String, openIndex: Int): Int {
+    var depth = 0
+    for (i in openIndex until raw.length) {
+        when (raw[i]) {
+            '(' -> depth++
+            ')' -> {
+                depth--
+                if (depth == 0) return i
+            }
+        }
+    }
+    return -1
 }

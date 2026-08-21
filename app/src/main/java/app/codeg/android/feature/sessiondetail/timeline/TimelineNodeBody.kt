@@ -1,9 +1,6 @@
 package app.codeg.android.feature.sessiondetail.timeline
 
-import android.os.Build
-import android.widget.Toast
 import androidx.compose.animation.Crossfade
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
@@ -13,8 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -61,7 +56,6 @@ import app.codeg.android.core.common.RelativeTime
 import app.codeg.android.core.common.copyPlainText
 import app.codeg.android.core.designsystem.markdown.MarkdownContent
 import app.codeg.android.core.designsystem.markdown.SingleBlockView
-import app.codeg.android.core.designsystem.markdown.markdownBlockPlainText
 import app.codeg.android.core.model.copyableTurnText
 import app.codeg.android.core.designsystem.theme.CodegTheme
 import app.codeg.android.core.model.AgentType
@@ -110,7 +104,6 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
 }
 
 /** The user's prompt — a right-aligned accent bubble with a You/time label. */
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
     val colors = CodegTheme.colors
@@ -119,12 +112,9 @@ private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
     val copyText = remember(turn) { copyableTurnText(turn.blocks) }
     var copied by remember { mutableStateOf(false) }
     LaunchedEffect(copied) { if (copied) { delay(1500); copied = false } }
-    fun copyNow(fromLongPress: Boolean = false) {
+    fun copyNow() {
         if (copyText.isEmpty()) return
-        if (copyPlainText(context, copyText, copyLabel)) {
-            copied = true
-            if (fromLongPress) notifyCopied(context)
-        }
+        if (copyPlainText(context, copyText, copyLabel)) copied = true
     }
     val bubble = RoundedCornerShape(16.dp, 16.dp, 4.dp, 16.dp)
     Column(
@@ -143,30 +133,21 @@ private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
                 .widthIn(max = 360.dp)
                 .fillMaxWidth(0.88f)
                 .clip(bubble)
-                .combinedClickable(
-                    interactionSource = remember { MutableInteractionSource() },
-                    indication = null,
-                    onClick = {},
-                    onLongClick = { copyNow(fromLongPress = true) },
-                    onLongClickLabel = copyLabel,
-                )
                 .background(colors.accent.copy(alpha = 0.22f))
                 .border(0.5.dp, colors.accent.copy(alpha = 0.48f), bubble)
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             horizontalAlignment = Alignment.Start,
         ) {
-            SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    for (block in turn.blocks) {
-                        when (block) {
-                            is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
-                            is ContentBlock.Image -> InlineImage(block.image, null)
-                            is ContentBlock.ImageGeneration ->
-                                if (block.image != null) InlineImage(block.image, block.revisedPrompt)
-                                else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
-                            else -> {}
-                        }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (block in turn.blocks) {
+                    when (block) {
+                        is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
+                        is ContentBlock.Image -> InlineImage(block.image, null)
+                        is ContentBlock.ImageGeneration ->
+                            if (block.image != null) InlineImage(block.image, block.revisedPrompt)
+                            else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
+                        else -> {}
                     }
                 }
             }
@@ -177,7 +158,6 @@ private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
     }
 }
 
-@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun AssistantNodeBody(
     content: NodeContent.AssistantBlock,
@@ -186,9 +166,6 @@ private fun AssistantNodeBody(
     modifier: Modifier,
 ) {
     val colors = CodegTheme.colors
-    val context = LocalContext.current
-    val copyLabel = stringResource(R.string.timeline_copy)
-    val blockText = remember(content.block) { markdownBlockPlainText(content.block) }
     val shape = when (rail) {
         RailStyle.Standalone -> RoundedCornerShape(16.dp)
         RailStyle.Head -> RoundedCornerShape(16.dp, 16.dp, 6.dp, 6.dp)
@@ -208,21 +185,6 @@ private fun AssistantNodeBody(
             Modifier
                 .fillMaxWidth()
                 .clip(shape)
-                .then(
-                    if (!content.streaming && blockText.isNotEmpty()) {
-                        Modifier.combinedClickable(
-                            interactionSource = remember { MutableInteractionSource() },
-                            indication = null,
-                            onClick = {},
-                            onLongClick = {
-                                if (copyPlainText(context, blockText, copyLabel)) notifyCopied(context)
-                            },
-                            onLongClickLabel = copyLabel,
-                        )
-                    } else {
-                        Modifier
-                    },
-                )
                 .background(colors.bgElevated.copy(alpha = if (colors.isDark) 0.55f else 0.92f))
                 .border(0.5.dp, colors.hairline, shape)
                 .padding(horizontal = 12.dp, vertical = 10.dp),
@@ -233,7 +195,7 @@ private fun AssistantNodeBody(
                     BlinkingCaret()
                 }
             } else {
-                SelectionContainer { SingleBlockView(content.block) }
+                SingleBlockView(content.block)
             }
         }
     }
@@ -319,12 +281,6 @@ private fun CopyChip(copied: Boolean, onCopy: () -> Unit) {
             fontSize = 12.sp,
             color = colors.textTertiary,
         )
-    }
-}
-
-private fun notifyCopied(context: android.content.Context) {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
-        Toast.makeText(context, context.getString(R.string.timeline_copied), Toast.LENGTH_SHORT).show()
     }
 }
 

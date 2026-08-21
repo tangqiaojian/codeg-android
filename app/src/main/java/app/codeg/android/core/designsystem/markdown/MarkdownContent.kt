@@ -55,16 +55,16 @@ fun MarkdownContent(raw: String, modifier: Modifier = Modifier) {
 internal fun SingleBlockView(block: MarkdownBlock, modifier: Modifier = Modifier) {
     val colors = CodegTheme.colors
     when (block) {
-        is MarkdownBlock.Paragraph -> Text(
-            text = rememberInlineMarkdown(block.text),
+        is MarkdownBlock.Paragraph -> MarkdownText(
+            raw = block.text,
             fontSize = 14.sp,
             lineHeight = 21.sp,
             color = colors.textPrimary,
             modifier = modifier.fillMaxWidth(),
         )
 
-        is MarkdownBlock.Heading -> Text(
-            text = rememberInlineMarkdown(block.text),
+        is MarkdownBlock.Heading -> MarkdownText(
+            raw = block.text,
             fontSize = headingSize(block.level),
             fontWeight = FontWeight.Bold,
             color = colors.textPrimary,
@@ -87,8 +87,8 @@ internal fun SingleBlockView(block: MarkdownBlock, modifier: Modifier = Modifier
                     .clip(RoundedCornerShape(1.dp))
                     .background(colors.accent.copy(alpha = 0.5f)),
             )
-            Text(
-                text = rememberInlineMarkdown(block.text),
+            MarkdownText(
+                raw = block.text,
                 fontSize = 14.sp,
                 lineHeight = 21.sp,
                 fontStyle = FontStyle.Italic,
@@ -117,8 +117,8 @@ private fun ListRow(marker: String, content: String) {
             color = colors.textTertiary,
             modifier = Modifier.width(16.dp),
         )
-        Text(
-            text = rememberInlineMarkdown(content),
+        MarkdownText(
+            raw = content,
             fontSize = 14.sp,
             lineHeight = 21.sp,
             color = colors.textPrimary,
@@ -154,8 +154,8 @@ private fun TableRow(cells: List<String>, isHeader: Boolean) {
     val colors = CodegTheme.colors
     Row {
         for (cell in cells) {
-            Text(
-                text = rememberInlineMarkdown(cell),
+            MarkdownText(
+                raw = cell,
                 fontSize = 12.sp,
                 fontWeight = if (isHeader) FontWeight.SemiBold else FontWeight.Normal,
                 color = if (isHeader) colors.textPrimary else colors.textSecondary,

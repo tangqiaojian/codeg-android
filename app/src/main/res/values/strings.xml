@@ -913,6 +913,9 @@
     <string name="timeline_unsupported_block">Unsupported block: %1$s</string>
     <string name="timeline_copied">Copied</string>
     <string name="timeline_copy">Copy</string>
+    <string name="chat_image_expand">View image</string>
+    <string name="chat_image_close">Close image</string>
+    <string name="chat_link_failed">Couldn\'t open this link</string>
     <string name="timeline_scroll_to_question">Scroll to question</string>
     <string name="timeline_question">Question</string>
 
