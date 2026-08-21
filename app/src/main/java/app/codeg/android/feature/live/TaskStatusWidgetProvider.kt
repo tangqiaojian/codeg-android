@@ -81,7 +81,8 @@ class TaskStatusWidgetProvider : AppWidgetProvider() {
                     ConversationStatus.CANCELLED -> context.getString(R.string.session_status_cancelled)
                     else -> context.getString(R.string.session_status_other)
                 }
-                if (snapshot.agentLabel.isBlank()) status else "${snapshot.agentLabel} · $status"
+                val line = if (snapshot.agentLabel.isBlank()) status else "${snapshot.agentLabel} · $status"
+                if (snapshot.stale) context.getString(R.string.live_status_stale, line) else line
             }
             val uri = Uri.parse(
                 snapshot.conversationId?.let { "codeg://conversation/$it" } ?: "codeg://tab/activity",

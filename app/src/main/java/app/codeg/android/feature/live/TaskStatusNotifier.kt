@@ -126,7 +126,8 @@ class TaskStatusNotifier @Inject constructor(
 
     private fun statusLine(snapshot: LiveTaskSnapshot): String {
         val status = statusShort(snapshot.status)
-        return if (snapshot.agentLabel.isBlank()) status else "${snapshot.agentLabel} · $status"
+        val base = if (snapshot.agentLabel.isBlank()) status else "${snapshot.agentLabel} · $status"
+        return if (snapshot.stale) context.getString(R.string.live_status_stale, base) else base
     }
 
     private fun statusShort(status: ConversationStatus?): String = when (status) {

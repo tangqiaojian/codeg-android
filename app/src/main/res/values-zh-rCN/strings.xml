@@ -76,6 +76,7 @@
     <string name="session_status_done">已完成</string>
     <string name="session_status_cancelled">已取消</string>
     <string name="session_status_other">—</string>
+    <string name="live_status_stale">待刷新 · %1$s</string>
     <string name="session_role_you">我</string>
     <string name="session_role_assistant">助手 · %1$s</string>
     <string name="session_changes_title">改动文件</string>

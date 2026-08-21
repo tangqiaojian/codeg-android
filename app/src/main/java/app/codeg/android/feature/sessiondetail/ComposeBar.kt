@@ -116,18 +116,6 @@ fun ComposeBar(
             onVoiceCommitState.value?.invoke(merged, false)
         }
     }
-    val dictation = remember {
-        VoiceDictation(
-            context = context,
-            onSpoken = { spoken, isFinal -> applySpoken.value(spoken, isFinal) },
-            onError = {
-                listening = false
-                Toast.makeText(context, R.string.compose_voice_error, Toast.LENGTH_SHORT).show()
-            },
-            onListening = { listening = it },
-        )
-    }
-    DisposableEffect(dictation) { onDispose { dictation.release() } }
     val speechActivity = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         listening = false
         if (result.resultCode != Activity.RESULT_OK) return@rememberLauncherForActivityResult
@@ -138,22 +126,35 @@ fun ComposeBar(
         }
         applySpoken.value(spoken, true)
     }
-    fun beginVoice() {
-        voiceSession.prefix = valueState.value.text
-        if (dictation.inlineAvailable) {
-            dictation.start()
-            return
-        }
+    val launchSystemSpeech = rememberUpdatedState {
         val intent = VoiceDictation.recognitionIntent()
         if (intent.resolveActivity(context.packageManager) == null) {
             Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
-            return
+        } else {
+            listening = true
+            runCatching { speechActivity.launch(intent) }.onFailure {
+                listening = false
+                Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
+            }
         }
-        listening = true
-        runCatching { speechActivity.launch(intent) }.onFailure {
-            listening = false
-            Toast.makeText(context, R.string.compose_voice_unavailable, Toast.LENGTH_LONG).show()
-        }
+    }
+    val dictation = remember {
+        VoiceDictation(
+            context = context,
+            onSpoken = { spoken, isFinal -> applySpoken.value(spoken, isFinal) },
+            onError = {
+                listening = false
+                Toast.makeText(context, R.string.compose_voice_error, Toast.LENGTH_SHORT).show()
+            },
+            onListening = { listening = it },
+            onEngineFailed = { launchSystemSpeech.value() },
+        )
+    }
+    DisposableEffect(dictation) { onDispose { dictation.release() } }
+    fun beginVoice() {
+        voiceSession.prefix = valueState.value.text
+        if (dictation.start()) return
+        launchSystemSpeech.value()
     }
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) beginVoice() else {

@@ -76,6 +76,7 @@
     <string name="session_status_done">Done</string>
     <string name="session_status_cancelled">Cancelled</string>
     <string name="session_status_other">—</string>
+    <string name="live_status_stale">Needs refresh · %1$s</string>
     <string name="session_role_you">You</string>
     <string name="session_role_assistant">Assistant · %1$s</string>
     <string name="session_changes_title">Changed files</string>

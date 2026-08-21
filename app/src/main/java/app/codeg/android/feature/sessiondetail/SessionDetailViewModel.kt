@@ -146,6 +146,7 @@ class SessionDetailViewModel @Inject constructor(
     /** Consecutive silent re-attaches for the current turn; reset on a confirmed attach. */
     private var streamReconnects = 0
     private var lastEventAt = 0L
+    private var lastTransportAt = 0L
     private var screenVisible = false
     private var watchJob: Job? = null
     private var flushRetryJob: Job? = null
@@ -516,11 +517,11 @@ class SessionDetailViewModel @Inject constructor(
                 when (frame) {
                     is StreamFrame.Global -> Unit
                     StreamFrame.Ready -> {
-                        touchStream()
+                        touchTransport()
                         s.attach(subscriptionId, conn, lastSeq.takeIf { it > 0 })
                     }
                     is StreamFrame.Snapshot -> {
-                        touchStream()
+                        touchTransport()
                         streamReconnects = 0
                         frame.snapshot.eventSeq?.let { lastSeq = it }
                         if (seedOnAttach && !seedLiveFromSnapshot(frame.snapshot)) {
@@ -537,7 +538,7 @@ class SessionDetailViewModel @Inject constructor(
                         if (!attached.isCompleted) attached.complete(Unit)
                     }
                     is StreamFrame.Replay -> {
-                        touchStream()
+                        touchTransport()
                         streamReconnects = 0
                         pendingReattachSeed = false
                         frame.events.forEach { applyEvent(it.event, it.seq) }
@@ -557,7 +558,7 @@ class SessionDetailViewModel @Inject constructor(
                     }
                     // Protocol keepalive only — must not reset the ACP quiet timer or
                     // SessionWatch would never reconnect a hung-but-pingable socket.
-                    StreamFrame.Pong -> Unit
+                    StreamFrame.Pong -> touchTransport()
                     is StreamFrame.Closed -> {
                         if (awaitAttach && !attached.isCompleted) {
                             attached.completeExceptionally(StreamAttachFailed(frame.reason))
@@ -641,6 +642,7 @@ class SessionDetailViewModel @Inject constructor(
 
     private fun applyEvent(event: AcpEvent, seq: Long) {
         touchStream()
+        touchTransport()
         if (seq > 0) lastSeq = seq
         if (liveBuilder == null && eventImpliesLiveTurn(event)) adoptIncomingTurn()
         val builder = liveBuilder
@@ -1233,6 +1235,7 @@ class SessionDetailViewModel @Inject constructor(
         if (watchJob?.isActive != true) {
             watchJob = viewModelScope.launch { watchLoop() }
         }
+        touchTransport()
         viewModelScope.launch { resumeVisibleSession() }
     }
 
@@ -1373,6 +1376,10 @@ class SessionDetailViewModel @Inject constructor(
         lastEventAt = System.currentTimeMillis()
     }
 
+    private fun touchTransport() {
+        lastTransportAt = System.currentTimeMillis()
+    }
+
     private fun eventImpliesLiveTurn(event: AcpEvent): Boolean = when (event) {
         is AcpEvent.ContentDelta,
         is AcpEvent.Thinking,
@@ -1409,10 +1416,13 @@ class SessionDetailViewModel @Inject constructor(
             delay(SessionWatch.TICK_MS)
             if (!screenVisible) return
             stream?.ping()
+            val now = System.currentTimeMillis()
             val action = SessionWatch.tick(
                 isInFlight = _ui.value.isInFlight,
                 conversationLive = _ui.value.summary?.status?.isLive == true,
-                millisSinceEvent = System.currentTimeMillis() - lastEventAt,
+                streamOpen = stream != null,
+                millisSinceAcp = now - lastEventAt,
+                millisSinceTransport = now - lastTransportAt,
             )
             when (action) {
                 SessionWatchAction.WAIT -> {
@@ -1423,14 +1433,13 @@ class SessionDetailViewModel @Inject constructor(
                     }
                 }
                 SessionWatchAction.REATTACH -> {
-                    touchStream()
                     if (!_ui.value.isInFlight && stream == null) reattachIfLive()
                     if (PromptQueueFlush.shouldFlush(_ui.value.isInFlight, _ui.value.queuedPrompts.size)) {
                         scheduleFlushRetry()
                     }
                 }
                 SessionWatchAction.RECONNECT -> {
-                    touchStream()
+                    touchTransport()
                     streamReconnects = 0
                     reconnectStream()
                 }

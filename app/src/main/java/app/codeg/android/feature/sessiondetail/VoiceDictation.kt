@@ -13,22 +13,18 @@ class VoiceDictation(
     private val onSpoken: (text: String, isFinal: Boolean) -> Unit,
     private val onError: () -> Unit,
     private val onListening: (Boolean) -> Unit,
+    private val onEngineFailed: () -> Unit = {},
 ) {
     private val hostContext = context
     private var recognizer: SpeechRecognizer? = null
     val inlineAvailable: Boolean = SpeechRecognizer.isRecognitionAvailable(hostContext)
 
-    fun start() {
-        if (!inlineAvailable) {
-            onError()
-            return
-        }
+    /** @return true if inline listening started. False means the caller should use the system UI. */
+    fun start(): Boolean {
+        if (!inlineAvailable) return false
         release(notify = false)
         val speech = runCatching { SpeechRecognizer.createSpeechRecognizer(hostContext) }.getOrNull()
-        if (speech == null) {
-            onError()
-            return
-        }
+        if (speech == null) return false
         recognizer = speech
         speech.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) = onListening(true)
@@ -38,8 +34,10 @@ class VoiceDictation(
             override fun onEndOfSpeech() = Unit
             override fun onError(error: Int) {
                 release(notify = true)
-                if (error != SpeechRecognizer.ERROR_CLIENT && error != SpeechRecognizer.ERROR_RECOGNIZER_BUSY) {
-                    onError()
+                when (error) {
+                    SpeechRecognizer.ERROR_CLIENT, SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> Unit
+                    SpeechRecognizer.ERROR_NO_MATCH, SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> onError()
+                    else -> onEngineFailed()
                 }
             }
             override fun onResults(results: Bundle?) {
@@ -53,13 +51,15 @@ class VoiceDictation(
             }
             override fun onEvent(eventType: Int, params: Bundle?) = Unit
         })
-        runCatching {
+        val started = runCatching {
             speech.startListening(recognitionIntent())
             onListening(true)
-        }.onFailure {
+        }.isSuccess
+        if (!started) {
             release(notify = true)
-            onError()
+            return false
         }
+        return true
     }
 
     /** End the utterance and wait for [onResults] so auto-send can still fire. */

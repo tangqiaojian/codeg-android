@@ -34,10 +34,12 @@ class LiveTaskCoordinator @Inject constructor(
     private val mutex = Mutex()
     @Volatile private var latest = LiveTaskSnapshot()
     private var started = false
+    private val prefs by lazy { context.getSharedPreferences("live_task_snapshot", Context.MODE_PRIVATE) }
 
     fun start() {
         if (started) return
         started = true
+        latest = LiveTaskFreshness.mark(LiveTaskSnapshotCodec.decode(prefs.getString("snap", null)))
         scope.launch {
             combine(settings.settings, repository.selectedProfile) { prefs, profile -> prefs to profile }
                 .collectLatest { (prefs, profile) ->
@@ -70,14 +72,20 @@ class LiveTaskCoordinator @Inject constructor(
 
     private suspend fun refresh(profile: ServerProfile?, notify: Boolean, widget: Boolean) {
         mutex.withLock {
+            val now = java.time.Instant.now()
             val snap = if (profile == null) {
                 LiveTaskSnapshot()
             } else {
                 val client = repository.client(profile)
-                val convs = client?.let { runCatching { it.listConversations() }.getOrNull() }.orEmpty()
-                LiveTaskPicker.pick(convs)
+                val convs = client?.let { runCatching { it.listConversations() }.getOrNull() }
+                if (convs == null && latest.conversationId != null) {
+                    LiveTaskFreshness.mark(latest.copy(stale = true), now)
+                } else {
+                    LiveTaskPicker.pick(convs.orEmpty()).copy(fetchedAt = now, stale = false)
+                }
             }
             latest = snap
+            prefs.edit().putString("snap", LiveTaskSnapshotCodec.encode(snap)).apply()
             if (notify) notifier.publish(snap) else notifier.cancel()
             if (widget) TaskStatusWidgetProvider.publish(context, snap)
             else TaskStatusWidgetProvider.publish(context, LiveTaskSnapshot())

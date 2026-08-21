@@ -67,4 +67,29 @@ class LiveTaskPickerTest {
         )
         assertEquals(2, idle.conversationId)
     }
+
+    @Test
+    fun `freshness marks a snapshot stale after 45 seconds`() {
+        val fetched = Instant.ofEpochSecond(100)
+        val snap = LiveTaskSnapshot(conversationId = 1, fetchedAt = fetched)
+        assertTrue(!LiveTaskFreshness.mark(snap, fetched.plusSeconds(10)).stale)
+        assertTrue(LiveTaskFreshness.mark(snap, fetched.plusSeconds(45)).stale)
+    }
+
+    @Test
+    fun `snapshot codec round-trips a live row`() {
+        val original = LiveTaskSnapshot(
+            conversationId = 9,
+            title = "work",
+            agentLabel = "Grok",
+            status = ConversationStatus.IN_PROGRESS,
+            updatedAt = Instant.ofEpochMilli(50),
+            fetchedAt = Instant.ofEpochMilli(80),
+        )
+        val restored = LiveTaskSnapshotCodec.decode(LiveTaskSnapshotCodec.encode(original))
+        assertEquals(9, restored.conversationId)
+        assertEquals("work", restored.title)
+        assertEquals(ConversationStatus.IN_PROGRESS, restored.status)
+        assertEquals(Instant.ofEpochMilli(80), restored.fetchedAt)
+    }
 }
