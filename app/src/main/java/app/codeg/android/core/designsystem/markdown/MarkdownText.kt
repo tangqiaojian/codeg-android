@@ -1,19 +1,12 @@
 package app.codeg.android.core.designsystem.markdown
 
 import android.widget.Toast
-import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextLayoutResult
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.TextUnit
@@ -22,6 +15,11 @@ import app.codeg.android.R
 import app.codeg.android.core.common.ChatLink
 import app.codeg.android.core.designsystem.theme.CodegTheme
 
+/**
+ * Renders inline markdown. Links are [LinkAnnotation]s so a surrounding
+ * [androidx.compose.foundation.text.selection.SelectionContainer] can still
+ * select/copy plain text; only the link span itself is tappable.
+ */
 @Composable
 fun MarkdownText(
     raw: String,
@@ -32,10 +30,13 @@ fun MarkdownText(
     fontWeight: FontWeight? = null,
     fontStyle: FontStyle? = null,
 ) {
-    val annotated = rememberInlineMarkdown(raw)
     val context = LocalContext.current
     val fail = stringResource(R.string.chat_link_failed)
-    var layout by remember { mutableStateOf<TextLayoutResult?>(null) }
+    val annotated = rememberInlineMarkdown(raw) { url ->
+        if (!ChatLink.open(context, url)) {
+            Toast.makeText(context, fail, Toast.LENGTH_SHORT).show()
+        }
+    }
     val resolvedColor = if (color == Color.Unspecified) CodegTheme.colors.textPrimary else color
     Text(
         text = annotated,
@@ -44,17 +45,6 @@ fun MarkdownText(
         color = resolvedColor,
         fontWeight = fontWeight,
         fontStyle = fontStyle,
-        onTextLayout = { layout = it },
-        modifier = modifier.pointerInput(annotated) {
-            detectTapGestures { pos ->
-                val result = layout ?: return@detectTapGestures
-                val offset = result.getOffsetForPosition(pos)
-                val url = annotated.getStringAnnotations(URL_TAG, offset, offset).firstOrNull()?.item
-                    ?: return@detectTapGestures
-                if (!ChatLink.open(context, url)) {
-                    Toast.makeText(context, fail, Toast.LENGTH_SHORT).show()
-                }
-            }
-        },
+        modifier = modifier,
     )
 }

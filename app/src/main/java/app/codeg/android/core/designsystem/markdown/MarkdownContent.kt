@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -38,11 +39,10 @@ fun MarkdownContent(raw: String, modifier: Modifier = Modifier) {
     // node-build path; routing streaming callers (e.g. an auto-expanded ReasoningBlock)
     // through it would churn/evict persisted entries with dead growing-tail prefixes.
     val blocks = remember(raw) { parseMarkdownBlocks(raw) }
-    Column(
-        modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        for (block in blocks) SingleBlockView(block)
+    SelectionContainer(modifier.fillMaxWidth()) {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            for (block in blocks) SingleBlockView(block)
+        }
     }
 }
 

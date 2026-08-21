@@ -88,7 +88,7 @@ fun NodeBody(node: TimelineNode, modifier: Modifier = Modifier) {
         is NodeContent.Reasoning -> ReasoningBlock(c.text, modifier, initiallyExpanded = c.streaming)
         is NodeContent.Tool -> ToolCallCard(c.vm, modifier)
         is NodeContent.ToolGroup -> ToolGroupCard(c.items, modifier, streaming = c.streaming)
-        is NodeContent.Image -> InlineImage(c.image, c.caption, modifier)
+        is NodeContent.Image -> DisableSelection { InlineImage(c.image, c.caption, modifier) }
         is NodeContent.Compaction -> ContextCompactionDivider(c.before, c.after, c.running, modifier)
         is NodeContent.Footer -> TurnFooter(c.turn, c.questionId, modifier)
         is NodeContent.Plan -> LivePlanView(c.entries, modifier)
@@ -143,9 +143,9 @@ private fun UserNodeBody(turn: MessageTurn, modifier: Modifier) {
                 for (block in turn.blocks) {
                     when (block) {
                         is ContentBlock.Text -> if (block.text.isNotBlank()) MarkdownContent(block.text)
-                        is ContentBlock.Image -> InlineImage(block.image, null)
+                        is ContentBlock.Image -> DisableSelection { InlineImage(block.image, null) }
                         is ContentBlock.ImageGeneration ->
-                            if (block.image != null) InlineImage(block.image, block.revisedPrompt)
+                            if (block.image != null) DisableSelection { InlineImage(block.image, block.revisedPrompt) }
                             else if (!block.revisedPrompt.isNullOrBlank()) MarkdownContent(block.revisedPrompt)
                         else -> {}
                     }
@@ -195,7 +195,7 @@ private fun AssistantNodeBody(
                     BlinkingCaret()
                 }
             } else {
-                SingleBlockView(content.block)
+                SelectionContainer { SingleBlockView(content.block) }
             }
         }
     }

@@ -4,12 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import app.codeg.android.core.common.ChatLink
 import app.codeg.android.core.designsystem.theme.CodegTheme
@@ -20,22 +23,30 @@ import app.codeg.android.core.designsystem.theme.CodegTheme
  * `**bold**` / `__bold__`, `*italic*` / `_italic_`, `~~strike~~`, `` `code` ``,
  * `[text](url)` links, `![alt](url)` image-links, and bare http(s) URLs.
  * Nesting is handled by recursion; code spans are literal. Openable URLs are
- * attached as a string annotation under [ChatLink.URL_TAG] for [MarkdownText].
+ * attached as a string annotation under [ChatLink.URL_TAG] and as a
+ * [LinkAnnotation.Url] so selection and tap-to-open can coexist.
  */
 const val URL_TAG = ChatLink.URL_TAG
+
+private class LinkClickHolder {
+    var onOpen: (String) -> Unit = {}
+}
 
 /** Cached inline-markdown for the current theme colors (recomputed if colors change).
  *  Slot-scoped `remember` only — deliberately NOT a shared cache, so the growing tail of
  *  a streaming block can't churn/evict persisted spans. */
 @Composable
-fun rememberInlineMarkdown(raw: String): AnnotatedString {
+fun rememberInlineMarkdown(raw: String, onOpen: (String) -> Unit = {}): AnnotatedString {
     val colors = CodegTheme.colors
+    val holder = remember { LinkClickHolder() }
+    holder.onOpen = onOpen
     return remember(raw, colors.accent, colors.codeSurface, colors.textPrimary) {
         inlineMarkdown(
             raw = raw,
             linkColor = colors.accent,
             codeBg = colors.codeSurface,
             codeColor = colors.textPrimary,
+            onOpen = { holder.onOpen(it) },
         )
     }
 }
@@ -45,8 +56,9 @@ fun inlineMarkdown(
     linkColor: Color,
     codeBg: Color,
     codeColor: Color,
+    onOpen: (String) -> Unit = {},
 ): AnnotatedString = buildAnnotatedString {
-    parseInline(this, raw, linkColor, codeBg, codeColor, autolink = true)
+    parseInline(this, raw, linkColor, codeBg, codeColor, onOpen, autolink = true)
 }
 
 private fun parseInline(
@@ -55,6 +67,7 @@ private fun parseInline(
     linkColor: Color,
     codeBg: Color,
     codeColor: Color,
+    onOpen: (String) -> Unit,
     autolink: Boolean,
 ) {
     var i = 0
@@ -92,7 +105,7 @@ private fun parseInline(
                 if (end > i + 1) {
                     flushPlain()
                     builder.withStyle(SpanStyle(fontWeight = FontWeight.SemiBold)) {
-                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, autolink)
+                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, onOpen, autolink)
                     }
                     i = end + 2
                 } else {
@@ -106,7 +119,7 @@ private fun parseInline(
                 if (end > i + 1) {
                     flushPlain()
                     builder.withStyle(SpanStyle(textDecoration = TextDecoration.LineThrough)) {
-                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, autolink)
+                        parseInline(builder, raw.substring(i + 2, end), linkColor, codeBg, codeColor, onOpen, autolink)
                     }
                     i = end + 2
                 } else {
@@ -120,7 +133,7 @@ private fun parseInline(
                 if (end > i) {
                     flushPlain()
                     builder.withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
-                        parseInline(builder, raw.substring(i + 1, end), linkColor, codeBg, codeColor, autolink)
+                        parseInline(builder, raw.substring(i + 1, end), linkColor, codeBg, codeColor, onOpen, autolink)
                     }
                     i = end + 1
                 } else {
@@ -140,7 +153,7 @@ private fun parseInline(
                         val text = raw.substring(i + 1, close)
                         val url = raw.substring(close + 2, urlEnd)
                         flushPlain()
-                        emitLink(builder, text, url, linkColor, codeBg, codeColor)
+                        emitLink(builder, text, url, linkColor, codeBg, codeColor, onOpen)
                         i = urlEnd + 1
                     } else {
                         plain.append(c); i++
@@ -154,7 +167,7 @@ private fun parseInline(
                 val match = if (autolink) ChatLink.matchAt(raw, i) else null
                 if (match != null) {
                     flushPlain()
-                    emitLink(builder, match.raw, match.href, linkColor, codeBg, codeColor)
+                    emitLink(builder, match.raw, match.href, linkColor, codeBg, codeColor, onOpen)
                     i = match.endExclusive
                 } else {
                     plain.append(c); i++
@@ -172,15 +185,30 @@ private fun emitLink(
     linkColor: Color,
     codeBg: Color,
     codeColor: Color,
+    onOpen: (String) -> Unit,
 ) {
     val href = ChatLink.normalize(url)
     if (href == null) {
-        parseInline(builder, display, linkColor, codeBg, codeColor, autolink = false)
+        parseInline(builder, display, linkColor, codeBg, codeColor, onOpen, autolink = false)
         return
     }
+    val styles = TextLinkStyles(
+        style = SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline),
+        pressedStyle = SpanStyle(
+            color = linkColor,
+            textDecoration = TextDecoration.Underline,
+            background = linkColor.copy(alpha = 0.16f),
+        ),
+    )
     builder.pushStringAnnotation(URL_TAG, href)
-    builder.withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
-        parseInline(builder, display, linkColor, codeBg, codeColor, autolink = false)
+    builder.withLink(
+        LinkAnnotation.Url(
+            url = href,
+            styles = styles,
+            linkInteractionListener = { onOpen(href) },
+        ),
+    ) {
+        parseInline(builder, display, linkColor, codeBg, codeColor, onOpen, autolink = false)
     }
     builder.pop()
 }
