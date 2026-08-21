@@ -2,15 +2,15 @@ package app.codeg.android.feature.sessiondetail
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VoiceDraftTest {
 
     @Test
-    fun `empty composer becomes the spoken text and is eligible to send`() {
+    fun `empty composer becomes the spoken text and is not auto-sent`() {
         assertEquals("hello world", VoiceDraft.merge("", "  hello world "))
-        assertTrue(VoiceDraft.shouldAutoSend(""))
+        assertFalse(VoiceDraft.shouldAutoSend(""))
+        assertFalse(VoiceDraft.shouldAutoSend("already typing"))
     }
 
     @Test

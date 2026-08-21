@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
@@ -114,10 +113,7 @@ fun ComposeBar(
         onValueChangeState.value(TextFieldValue(merged, TextRange(merged.length)))
         if (isFinal) {
             listening = false
-            val commit = onVoiceCommitState.value
-            if (commit != null && VoiceDraft.shouldAutoSend(prefix) && merged.isNotBlank()) {
-                commit(merged, true)
-            }
+            onVoiceCommitState.value?.invoke(merged, false)
         }
     }
     val dictation = remember {
@@ -283,14 +279,14 @@ fun ComposeBar(
                     }
                 }
             }
-            val fieldShape = RoundedCornerShape(percent = 50)
+            val fieldShape = RoundedCornerShape(24.dp)
             Box(
                 Modifier
                     .weight(1f)
-                    .heightIn(min = 48.dp)
+                    .heightIn(min = 48.dp, max = 120.dp)
                     .clip(fieldShape)
                     .background(chrome)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                    .padding(horizontal = 16.dp, vertical = 10.dp),
                 contentAlignment = Alignment.CenterStart,
             ) {
                 if (value.text.isEmpty()) {
@@ -309,11 +305,11 @@ fun ComposeBar(
                     textStyle = MaterialTheme.typography.bodyLarge.copy(color = colors.textPrimary),
                     cursorBrush = SolidColor(colors.accent),
                     minLines = 1,
-                    maxLines = 6,
-                    keyboardOptions = KeyboardOptions(imeAction = if (hasDraft) ImeAction.Send else ImeAction.Default),
-                    keyboardActions = KeyboardActions(onSend = { if (hasDraft) onSend() }),
+                    maxLines = 4,
+                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default),
                     modifier = Modifier
                         .fillMaxWidth()
+                        .heightIn(max = 100.dp)
                         .onPreviewKeyEvent { event ->
                             if (event.type != KeyEventType.KeyDown || event.key != Key.Backspace || !value.selection.collapsed) return@onPreviewKeyEvent false
                             val cursor = value.selection.start

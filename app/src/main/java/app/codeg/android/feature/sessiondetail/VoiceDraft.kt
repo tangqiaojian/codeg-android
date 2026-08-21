@@ -9,5 +9,6 @@ object VoiceDraft {
         return if (prefix.last().isWhitespace()) prefix + spokenTrim else "$prefix $spokenTrim"
     }
 
-    fun shouldAutoSend(prefix: String): Boolean = prefix.isBlank()
+    /** Dictation always lands in the composer so the user can edit before sending. */
+    fun shouldAutoSend(@Suppress("UNUSED_PARAMETER") prefix: String): Boolean = false
 }

@@ -883,7 +883,7 @@
     <string name="compose_voice_stop">Stop listening</string>
     <string name="compose_voice_listening">Listening…</string>
     <string name="compose_voice_unavailable">Speech recognition isn\'t available on this device.</string>
-    <string name="compose_voice_permission">Allow microphone access to dictate or send by voice.</string>
+    <string name="compose_voice_permission">Allow microphone access to dictate into the composer.</string>
     <string name="compose_voice_error">Couldn\'t hear that. Try again.</string>
     <string name="compose_queue">Queue message</string>
     <string name="compose_queue_title">Queued · %1$d</string>
